@@ -1,0 +1,51 @@
+# --- Python ---
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Data runtime (inclut config.json avec la cle API, la DB, les logs) ---
+data/
+
+# --- DB / logs (au cas ou generes ailleurs que dans data/) ---
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+
+# --- Secrets / env ---
+.env
+.env.local
+.env.*.local
+*.env
+secrets.json
+config.json
+
+# --- IDE / editeurs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Build / dist ---
+build/
+dist/
+*.spec

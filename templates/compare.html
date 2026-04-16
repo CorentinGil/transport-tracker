@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Comparateur - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<h1 class="text-xl font-black mb-2">Comparateur de lignes</h1>
+<p class="text-sm text-slate-400 mb-5">Comparez deux lignes cote a cote</p>
+
+<!-- Line selectors -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div class="card">
+        <h3 class="text-sm font-bold mb-2 text-blue-500">Ligne A</h3>
+        <div id="picker-a" class="flex flex-wrap gap-1.5"></div>
+        <div id="selected-a" class="mt-2 text-center"></div>
+    </div>
+    <div class="card">
+        <h3 class="text-sm font-bold mb-2 text-purple-500">Ligne B</h3>
+        <div id="picker-b" class="flex flex-wrap gap-1.5"></div>
+        <div id="selected-b" class="mt-2 text-center"></div>
+    </div>
+</div>
+
+<!-- Comparison (hidden until both selected) -->
+<div id="compare-section" class="hidden">
+    <!-- Stats side by side -->
+    <div class="grid grid-cols-2 gap-4 mb-5" id="compare-stats"></div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+        <div class="card">
+            <h2 class="text-base font-bold mb-3">Par heure</h2>
+            <canvas id="chart-hours" height="200"></canvas>
+        </div>
+        <div class="card">
+            <h2 class="text-base font-bold mb-3">Par jour</h2>
+            <canvas id="chart-dow" height="200"></canvas>
+        </div>
+    </div>
+
+    <div class="card mb-5">
+        <h2 class="text-base font-bold mb-3">Evolution</h2>
+        <canvas id="chart-timeline" height="150"></canvas>
+    </div>
+
+    <!-- Verdict -->
+    <div class="card text-center" id="verdict"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let lineA = null, lineB = null;
+let chartH, chartD, chartT;
+
+const allLines = {
+    metro: ['1','2','3','3b','4','5','6','7','7b','8','9','10','11','12','13','14'],
+    rer: ['A','B','C','D','E'],
+    tram: ['T1','T2','T3a','T3b','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13']
+};
+
+function renderPickers() {
+    ['a','b'].forEach(side => {
+        let html = '';
+        for (const [type, ids] of Object.entries(allLines)) {
+            ids.forEach(id => {
+                const sel = (side === 'a' && lineA?.type === type && lineA?.id === id) || (side === 'b' && lineB?.type === type && lineB?.id === id);
+                html += `<button onclick="selectLine('${side}','${type}','${id}')" class="transition hover:scale-110 ${sel ? 'ring-2 ring-blue-500 rounded-full' : ''}">${lineIcon(type, id, 'sm')}</button>`;
+            });
+        }
+        document.getElementById(`picker-${side}`).innerHTML = html;
+
+        const line = side === 'a' ? lineA : lineB;
+        document.getElementById(`selected-${side}`).innerHTML = line
+            ? `<span class="text-sm font-bold capitalize">${line.type} ${line.id}</span>`
+            : '<span class="text-xs text-slate-400">Selectionnez une ligne</span>';
+    });
+}
+
+function selectLine(side, type, id) {
+    if (side === 'a') lineA = { type, id };
+    else lineB = { type, id };
+    renderPickers();
+    if (lineA && lineB) loadComparison();
+    else document.getElementById('compare-section').classList.add('hidden');
+}
+
+async function loadComparison() {
+    document.getElementById('compare-section').classList.remove('hidden');
+
+    const [dataA, dataB] = await Promise.all([
+        fetch(`/api/ranking?line_type=${lineA.type}&line_id=${lineA.id}`).then(r=>r.json()),
+        fetch(`/api/ranking?line_type=${lineB.type}&line_id=${lineB.id}`).then(r=>r.json()),
+    ]);
+
+    const a = dataA.find(d => d.line_type === lineA.type && d.line_id === lineA.id) || {};
+    const b = dataB.find(d => d.line_type === lineB.type && d.line_id === lineB.id) || {};
+
+    const pA = a.disruption_pct || 0, pB = b.disruption_pct || 0;
+    const cA = pA > 15 ? 'text-red-500' : pA > 5 ? 'text-amber-500' : 'text-emerald-500';
+    const cB = pB > 15 ? 'text-red-500' : pB > 5 ? 'text-amber-500' : 'text-emerald-500';
+
+    document.getElementById('compare-stats').innerHTML = `
+        <div class="card !p-4 text-center border-t-2 border-blue-500">
+            <div class="mb-2">${lineIcon(lineA.type, lineA.id, 'md')}</div>
+            <span class="text-3xl font-black ${cA}">${pA}%</span>
+            <span class="text-[10px] text-slate-400 block mt-1">perturbation</span>
+            <span class="text-[10px] text-slate-400 block">${(a.total_checks||0).toLocaleString('fr')} mesures</span>
+        </div>
+        <div class="card !p-4 text-center border-t-2 border-purple-500">
+            <div class="mb-2">${lineIcon(lineB.type, lineB.id, 'md')}</div>
+            <span class="text-3xl font-black ${cB}">${pB}%</span>
+            <span class="text-[10px] text-slate-400 block mt-1">perturbation</span>
+            <span class="text-[10px] text-slate-400 block">${(b.total_checks||0).toLocaleString('fr')} mesures</span>
+        </div>
+    `;
+
+    // Verdict
+    const diff = Math.abs(pA - pB);
+    let verdict;
+    if (diff < 1) verdict = `Les deux lignes sont equivalentes`;
+    else if (pA < pB) verdict = `<span class="capitalize">${lineA.type} ${lineA.id}</span> est <span class="text-emerald-500 font-black">${diff.toFixed(1)}x</span> plus fiable`;
+    else verdict = `<span class="capitalize">${lineB.type} ${lineB.id}</span> est <span class="text-emerald-500 font-black">${diff.toFixed(1)}x</span> plus fiable`;
+    document.getElementById('verdict').innerHTML = `<p class="text-lg font-bold py-2">${verdict}</p>`;
+
+    // Load charts
+    await Promise.all([loadHourChart(), loadDowChart(), loadTimelineChart()]);
+}
+
+async function loadHourChart() {
+    const [hA, hB] = await Promise.all([
+        fetch(`/api/by-hour?line_type=${lineA.type}&line_id=${lineA.id}`).then(r=>r.json()),
+        fetch(`/api/by-hour?line_type=${lineB.type}&line_id=${lineB.id}`).then(r=>r.json()),
+    ]);
+
+    const labels = Array.from({length:24}, (_,i) => `${i}h`);
+    if (chartH) chartH.destroy();
+    chartH = new Chart(document.getElementById('chart-hours'), {
+        type: 'line',
+        data: { labels, datasets: [
+            { label: `${lineA.type} ${lineA.id}`, data: labels.map((_,i) => (hA.find(d=>d.hour===i)||{}).pct||0), borderColor: '#3b82f6', borderWidth: 2, tension: 0.3, pointRadius: 0 },
+            { label: `${lineB.type} ${lineB.id}`, data: labels.map((_,i) => (hB.find(d=>d.hour===i)||{}).pct||0), borderColor: '#a855f7', borderWidth: 2, tension: 0.3, pointRadius: 0 },
+        ]},
+        options: compactOpts()
+    });
+}
+
+async function loadDowChart() {
+    const [dA, dB] = await Promise.all([
+        fetch(`/api/by-dow?line_type=${lineA.type}&line_id=${lineA.id}`).then(r=>r.json()),
+        fetch(`/api/by-dow?line_type=${lineB.type}&line_id=${lineB.id}`).then(r=>r.json()),
+    ]);
+
+    const order = [1,2,3,4,5,6,0];
+    if (chartD) chartD.destroy();
+    chartD = new Chart(document.getElementById('chart-dow'), {
+        type: 'bar',
+        data: { labels: order.map(d => DOW_LABELS[d]), datasets: [
+            { label: `${lineA.type} ${lineA.id}`, data: order.map(d => (dA.find(x=>x.dow===d)||{}).pct||0), backgroundColor: 'rgba(59,130,246,0.7)', borderRadius: 4 },
+            { label: `${lineB.type} ${lineB.id}`, data: order.map(d => (dB.find(x=>x.dow===d)||{}).pct||0), backgroundColor: 'rgba(168,85,247,0.7)', borderRadius: 4 },
+        ]},
+        options: compactOpts()
+    });
+}
+
+async function loadTimelineChart() {
+    const [tA, tB] = await Promise.all([
+        fetch(`/api/by-date?line_type=${lineA.type}&line_id=${lineA.id}`).then(r=>r.json()),
+        fetch(`/api/by-date?line_type=${lineB.type}&line_id=${lineB.id}`).then(r=>r.json()),
+    ]);
+
+    const allDates = [...new Set([...tA.map(d=>d.date), ...tB.map(d=>d.date)])].sort();
+    if (chartT) chartT.destroy();
+    chartT = new Chart(document.getElementById('chart-timeline'), {
+        type: 'line',
+        data: { labels: allDates, datasets: [
+            { label: `${lineA.type} ${lineA.id}`, data: allDates.map(dt => (tA.find(d=>d.date===dt)||{}).pct||null), borderColor: '#3b82f6', borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true },
+            { label: `${lineB.type} ${lineB.id}`, data: allDates.map(dt => (tB.find(d=>d.date===dt)||{}).pct||null), borderColor: '#a855f7', borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true },
+        ]},
+        options: { ...compactOpts(), scales: { ...compactOpts().scales, x: { grid:{display:false}, ticks:{maxTicksLimit:10,font:{size:9}} } } }
+    });
+}
+
+function compactOpts() {
+    return {
+        responsive: true, plugins: { legend: { position:'bottom', labels:{boxWidth:12,font:{size:10}} }, tooltip:{backgroundColor:'rgba(15,23,42,0.9)',cornerRadius:8,callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}%`}} },
+        scales: { y:{beginAtZero:true,ticks:{callback:v=>v+'%',font:{size:10}},grid:{drawBorder:false}}, x:{grid:{display:false},ticks:{font:{size:10}}} }
+    };
+}
+
+renderPickers();
+</script>
+{% endblock %}

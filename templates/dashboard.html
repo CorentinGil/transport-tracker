@@ -1,0 +1,779 @@
+{% extends "base.html" %}
+{% block title %}Transport Tracker{% endblock %}
+
+{% block content %}
+<!-- Year tabs -->
+<div id="year-tabs" class="flex flex-wrap items-center gap-2 mb-5"></div>
+
+<!-- Summary banner -->
+<div id="summary-banner" class="mb-5"></div>
+
+<!-- Live pulse strip: Feed + Prediction + Moment critique -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+    <!-- Live feed (collapsible, collapsed by default) -->
+    <div class="card" id="feed-card">
+        <button onclick="toggleFeed()" class="w-full flex items-center justify-between group">
+            <div class="text-left">
+                <h2 class="text-base font-bold flex items-center gap-2">
+                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500">
+                        <span class="pulse-dot bg-red-500"></span>
+                    </span>
+                    En direct
+                    <span id="feed-count" class="ml-1 text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-500"></span>
+                </h2>
+                <p class="text-[11px] text-slate-400 mt-0.5 ml-8">Dernieres perturbations detectees</p>
+            </div>
+            <svg id="feed-chevron" class="w-4 h-4 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-transform" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div id="feed-list" class="space-y-2 max-h-[360px] overflow-y-auto pr-1 mt-3 hidden"></div>
+    </div>
+
+    <!-- Prediction maintenant -->
+    <div class="card">
+        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-500">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            Probabilite maintenant
+        </h2>
+        <p class="text-[11px] text-slate-400 mb-3" id="predict-context">—</p>
+        <div id="predict-card" class="flex items-center gap-4">
+            <div class="relative w-24 h-24 shrink-0">
+                <canvas id="chart-predict"></canvas>
+                <div id="predict-value" class="absolute inset-0 flex items-center justify-center text-xl font-black tabular-nums"></div>
+            </div>
+            <div class="flex-1 leading-tight">
+                <p id="predict-label" class="text-xs font-semibold"></p>
+                <p id="predict-samples" class="text-[10px] text-slate-400 mt-1"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Moment critique -->
+    <div class="card">
+        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-orange-500/10 text-orange-500">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </span>
+            Moment critique
+        </h2>
+        <p class="text-[11px] text-slate-400 mb-3">Creneau le plus perturbe de la semaine</p>
+        <div id="peak-card" class="flex items-center gap-4">
+            <div class="text-4xl font-black tabular-nums text-orange-500" id="peak-value">—</div>
+            <div class="leading-tight">
+                <p class="text-sm font-bold" id="peak-when">—</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">du reseau perturbe</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Current status -->
+<div class="card mb-5">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-bold flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </span>
+            Statut en direct
+        </h2>
+        <button onclick="toggleCompact()" id="compact-toggle" class="tab-pill" title="Basculer vue compacte / detaillee">
+            <svg class="w-3 h-3 inline -mt-0.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            <span id="compact-toggle-label">Detaille</span>
+        </button>
+    </div>
+    <div id="status-compact" class="mb-4 hidden"></div>
+    <div id="current-status" class="space-y-5"></div>
+</div>
+
+<!-- Rankings: Pires | Meilleures -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 17l6-6 4 4 8-8M21 7h-6m6 0v6"/></svg>
+                </span>
+                Pires lignes
+            </h2>
+            <div class="flex gap-1" id="ranking-tabs"></div>
+        </div>
+        <div id="ranking-list" class="space-y-1.5 max-h-[400px] overflow-y-auto pr-1"></div>
+    </div>
+
+    <div class="card">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7l-6 6-4-4-8 8M3 17h6m-6 0v-6"/></svg>
+                </span>
+                Meilleures lignes
+            </h2>
+            <div class="flex gap-1" id="best-tabs"></div>
+        </div>
+        <div id="best-list" class="space-y-1.5 max-h-[400px] overflow-y-auto pr-1"></div>
+    </div>
+</div>
+
+<!-- Hour + Day -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                Par heure
+            </h2>
+            <div class="flex gap-1" id="hours-tabs"></div>
+        </div>
+        <canvas id="chart-hours" height="200"></canvas>
+    </div>
+
+    <div class="card">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-bold flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-purple-500/10 text-purple-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </span>
+                Par jour
+            </h2>
+            <div class="flex gap-1" id="dow-tabs"></div>
+        </div>
+        <canvas id="chart-dow" height="200"></canvas>
+    </div>
+</div>
+
+<!-- Heatmap + Causes -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-rose-500/10 text-rose-500">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </span>
+            Heatmap jour / heure
+        </h2>
+        <p class="text-[11px] text-slate-400 mb-3">Perturbation moyenne par creneau</p>
+        <div id="heatmap" class="overflow-x-auto"></div>
+    </div>
+
+    <div class="card">
+        <div class="mb-3">
+            <h2 class="text-base font-bold flex items-center gap-2">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                Causes des perturbations
+            </h2>
+            <p class="text-[11px] text-slate-400 mt-1 ml-8">Incidents uniquement (hors travaux planifies)</p>
+        </div>
+        <div class="flex items-center gap-5">
+            <div class="relative w-48 h-48 shrink-0">
+                <canvas id="chart-causes"></canvas>
+                <div id="causes-total" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-tight"></div>
+            </div>
+            <div id="causes-list" class="flex-1 space-y-1 max-h-[220px] overflow-y-auto pr-1"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedYear = 'all';
+let rankingType = 'all';
+let bestType = 'all';
+let rankingData = [];
+let sparklineMap = {};
+let chartHours, chartDow, chartCauses, chartPredict;
+let chartFilters = { hours: 'all', dow: 'all' };
+// Compact = default, unless user explicitly chose detailed
+let compactMode = localStorage.getItem('statusCompact') !== '0';
+// Feed closed by default, unless user explicitly opened it
+let feedOpen = localStorage.getItem('feedOpen') === '1';
+
+const TYPE_TABS = [
+    { key: 'all', label: 'Tous' },
+    { key: 'metro', label: 'Metro' },
+    { key: 'rer', label: 'RER' },
+    { key: 'tram', label: 'Tram' },
+];
+
+function buildQuery() {
+    const params = new URLSearchParams();
+    if (selectedYear !== 'all') {
+        params.set('start', `${selectedYear}-01-01`);
+        params.set('end', `${selectedYear}-12-31T23:59:59`);
+    }
+    return params.toString();
+}
+
+function chartQuery(chart) {
+    const params = new URLSearchParams(buildQuery());
+    const type = chartFilters[chart];
+    if (type !== 'all') params.set('line_type', type);
+    return params.toString();
+}
+
+// --- Tabs ---
+
+function renderTypeTabs(containerId, group, activeKey) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = TYPE_TABS.map(t =>
+        `<button onclick="setFilter('${group}','${t.key}')" class="tab-pill ${t.key === activeKey ? 'active' : ''}" data-grp="${group}" data-key="${t.key}">${t.label}</button>`
+    ).join('');
+}
+
+function setFilter(group, key) {
+    if (group === 'ranking') {
+        rankingType = key;
+        renderTypeTabs('ranking-tabs', 'ranking', key);
+        renderRanking();
+    } else if (group === 'best') {
+        bestType = key;
+        renderTypeTabs('best-tabs', 'best', key);
+        renderBest();
+    } else {
+        chartFilters[group] = key;
+        const containerId = group === 'hours' ? 'hours-tabs' : 'dow-tabs';
+        renderTypeTabs(containerId, group, key);
+        if (group === 'hours') loadByHour();
+        else loadByDow();
+    }
+}
+
+async function loadYearTabs() {
+    const years = await fetch('/api/years').then(r => r.json());
+    const container = document.getElementById('year-tabs');
+    const allTabs = [{ key: 'all', label: 'Tout' }, ...years.map(y => ({ key: y, label: y }))];
+    container.innerHTML = allTabs.map(t =>
+        `<button onclick="setYear('${t.key}')" class="tab-pill ${t.key === selectedYear ? 'active' : ''}" data-year="${t.key}">${t.label}</button>`
+    ).join('');
+}
+
+function setYear(y) {
+    selectedYear = y;
+    document.querySelectorAll('[data-year]').forEach(b => {
+        b.classList.toggle('active', b.dataset.year === y);
+    });
+    loadAll();
+}
+
+// --- Load all ---
+
+async function loadAll() {
+    await Promise.all([
+        loadSummary(), loadCurrentStatus(), loadRanking(),
+        loadByHour(), loadByDow(), loadCauses(),
+        loadFeed(), loadHeatmapAndPeak(), loadPrediction(),
+    ]);
+}
+
+// --- Summary ---
+
+function formatPeriod(firstIso, lastIso) {
+    if (!firstIso || !lastIso) return '—';
+    const opts = { day: 'numeric', month: 'short', year: 'numeric' };
+    const a = new Date(firstIso).toLocaleDateString('fr-FR', opts);
+    const b = new Date(lastIso).toLocaleDateString('fr-FR', opts);
+    return a === b ? a : `${a} → ${b}`;
+}
+
+async function loadSummary() {
+    const [data, trend] = await Promise.all([
+        fetch(`/api/summary?${buildQuery()}`).then(r => r.json()),
+        fetch('/api/trend').then(r => r.json()).catch(() => ({ delta: null })),
+    ]);
+    const totalD = data.total_disruptions || 0;
+    const totalC = data.total_checks || 0;
+    const totalL = data.total_lines || 0;
+    const events = data.distinct_events || 0;
+    const pct = totalC > 0 ? (100 * totalD / totalC).toFixed(1) : 0;
+    const pctColor = pct > 10 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
+    const pctBg = pct > 10 ? 'from-red-500/10 to-red-500/5' : pct > 5 ? 'from-amber-500/10 to-amber-500/5' : 'from-emerald-500/10 to-emerald-500/5';
+
+    let trendHtml = '';
+    if (trend && trend.delta !== null && trend.delta !== undefined) {
+        const d = trend.delta;
+        const up = d > 0, flat = Math.abs(d) < 0.1;
+        const tColor = flat ? 'text-slate-400' : up ? 'text-red-500' : 'text-emerald-500';
+        const arrow = flat ? '→' : up ? '▲' : '▼';
+        trendHtml = `
+            <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+            <div class="leading-tight">
+                <span class="text-sm font-black ${tColor}">${arrow} ${Math.abs(d).toFixed(2)} pts</span>
+                <span class="text-[11px] text-slate-400 block">vs mois precedent</span>
+            </div>`;
+    }
+
+    const period = formatPeriod(data.first_record, data.last_record);
+
+    document.getElementById('summary-banner').innerHTML = `
+        <div class="flex flex-wrap items-center gap-5 px-5 py-4 rounded-2xl bg-gradient-to-r ${pctBg} ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+            <div class="flex items-center gap-3">
+                <span class="text-4xl font-black ${pctColor} tabular-nums">${pct}%</span>
+                <div class="leading-tight">
+                    <span class="text-sm font-bold text-slate-700 dark:text-slate-200">du reseau perturbe</span>
+                    <span class="text-[11px] text-slate-400 block">hors travaux planifies</span>
+                </div>
+            </div>
+            <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+            <div class="leading-tight" title="Evenements distincts : chaque perturbation comptee une seule fois (de son debut a sa resolution). ${totalD.toLocaleString('fr')} releves bruts en alerte.">
+                <span class="text-lg font-black text-red-500 tabular-nums">${events.toLocaleString('fr')}</span>
+                <span class="text-[11px] text-slate-400 block">perturbations distinctes</span>
+            </div>
+            <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+            <div class="leading-tight">
+                <span class="text-lg font-black text-slate-700 dark:text-slate-200 tabular-nums">${totalL}</span>
+                <span class="text-[11px] text-slate-400 block">lignes suivies</span>
+            </div>
+            <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
+            <div class="leading-tight">
+                <span class="text-xs font-bold text-slate-600 dark:text-slate-300">${period}</span>
+                <span class="text-[11px] text-slate-400 block">periode couverte</span>
+            </div>
+            ${trendHtml}
+        </div>
+    `;
+}
+
+// --- Feed ---
+
+function timeAgo(iso) {
+    const then = new Date(iso.replace(' ', 'T')).getTime();
+    const diff = (Date.now() - then) / 1000;
+    if (diff < 60) return `il y a ${Math.max(1, Math.floor(diff))} s`;
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+    return `il y a ${Math.floor(diff / 86400)} j`;
+}
+
+function cleanMsg(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.innerHTML = s;
+    return (d.textContent || '').trim();
+}
+
+function applyFeedState() {
+    document.getElementById('feed-list').classList.toggle('hidden', !feedOpen);
+    const chev = document.getElementById('feed-chevron');
+    if (chev) chev.style.transform = feedOpen ? 'rotate(180deg)' : '';
+}
+
+function toggleFeed() {
+    feedOpen = !feedOpen;
+    localStorage.setItem('feedOpen', feedOpen ? '1' : '0');
+    applyFeedState();
+}
+
+async function loadFeed() {
+    const data = await fetch('/api/recent-alerts?limit=5').then(r => r.json());
+    const countEl = document.getElementById('feed-count');
+    if (countEl) countEl.textContent = data.length ? String(data.length) : '';
+    if (!data.length) {
+        document.getElementById('feed-list').innerHTML = '<p class="text-slate-400 text-sm">Pas de perturbation en cours</p>';
+        applyFeedState();
+        return;
+    }
+    let html = '';
+    data.forEach(d => {
+        const msg = cleanMsg(d.title || d.message);
+        html += `
+            <a href="/line/${d.line_type}/${d.line_id}" class="flex gap-2.5 p-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition ring-1 ring-red-400/20 bg-red-50/40 dark:bg-red-950/10">
+                ${lineIcon(d.line_type, d.line_id, 'sm')}
+                <div class="flex-1 min-w-0 leading-tight">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-xs font-semibold capitalize">${d.line_type} ${d.line_id}</span>
+                        <span class="text-[9px] text-slate-400 font-semibold shrink-0">${timeAgo(d.timestamp)}</span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">${msg || 'Incident en cours'}</p>
+                </div>
+            </a>`;
+    });
+    document.getElementById('feed-list').innerHTML = html;
+    applyFeedState();
+}
+
+// --- Prediction maintenant ---
+
+async function loadPrediction() {
+    const data = await fetch('/api/predict').then(r => r.json());
+    const now = new Date();
+    const dow = now.getDay();
+    const hour = now.getHours();
+    const cell = data.find(d => d.dow === dow && d.hour === hour);
+    const pct = cell ? cell.pct : 0;
+    const samples = cell ? cell.samples : 0;
+
+    const color = pct > 15 ? '#ef4444' : pct > 5 ? '#f59e0b' : '#10b981';
+    const label = pct > 15 ? 'Risque eleve' : pct > 5 ? 'Moderation' : 'Tout roule';
+    const now_label = `${DOW_LABELS[dow]} ${String(hour).padStart(2,'0')}h`;
+
+    document.getElementById('predict-context').textContent = `${now_label} — d'apres l'historique`;
+    document.getElementById('predict-value').innerHTML = `<span style="color:${color}">${pct}%</span>`;
+    document.getElementById('predict-label').innerHTML = `<span style="color:${color}">${label}</span>`;
+    document.getElementById('predict-samples').textContent = samples ? `Base sur ${samples.toLocaleString('fr')} releves` : 'Pas assez de donnees';
+
+    if (chartPredict) chartPredict.destroy();
+    chartPredict = new Chart(document.getElementById('chart-predict'), {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [pct, Math.max(0, 100 - pct)],
+                backgroundColor: [color, 'rgba(148,163,184,0.15)'],
+                borderWidth: 0,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: true,
+            cutout: '75%',
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            animation: { animateRotate: true, duration: 600 },
+        },
+    });
+}
+
+// --- Heatmap + Moment critique ---
+
+async function loadHeatmapAndPeak() {
+    const data = await fetch('/api/heatmap').then(r => r.json());
+    // Build 7 x 24 grid
+    const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => null));
+    let peak = { pct: -1, dow: 0, hour: 0 };
+    data.forEach(d => {
+        if (d.pct == null) return;
+        grid[d.dow][d.hour] = d.pct;
+        if (d.pct > peak.pct) peak = { pct: d.pct, dow: d.dow, hour: d.hour };
+    });
+
+    // Render heatmap (mon-sun rows)
+    const rowOrder = [1, 2, 3, 4, 5, 6, 0];
+    let html = '<div style="display:grid;grid-template-columns:auto repeat(24, minmax(14px, 1fr));gap:2px;font-size:9px;min-width:520px">';
+    // Header row
+    html += '<div></div>';
+    for (let h = 0; h < 24; h++) {
+        html += `<div class="text-slate-400 text-center" style="font-size:8px">${h % 3 === 0 ? h + 'h' : ''}</div>`;
+    }
+    for (const d of rowOrder) {
+        html += `<div class="text-slate-400 font-semibold pr-1" style="line-height:14px">${DOW_LABELS[d]}</div>`;
+        for (let h = 0; h < 24; h++) {
+            const v = grid[d][h];
+            const bg = heatColor(v);
+            const title = v == null ? `${DOW_LABELS[d]} ${h}h — pas de donnees` : `${DOW_LABELS[d]} ${h}h — ${v}%`;
+            html += `<div title="${title}" style="height:14px;border-radius:3px;background:${bg}"></div>`;
+        }
+    }
+    html += '</div>';
+    document.getElementById('heatmap').innerHTML = html;
+
+    // Peak card
+    if (peak.pct >= 0) {
+        document.getElementById('peak-value').textContent = `${peak.pct}%`;
+        document.getElementById('peak-when').textContent = `${DOW_LABELS[peak.dow]} — ${String(peak.hour).padStart(2,'0')}h`;
+    }
+}
+
+function heatColor(v) {
+    if (v == null) return 'rgba(148,163,184,0.12)';
+    // Green → amber → red scale based on %
+    if (v < 1) return 'rgba(16,185,129,0.15)';
+    if (v < 5) return 'rgba(16,185,129,0.45)';
+    if (v < 10) return 'rgba(245,158,11,0.5)';
+    if (v < 20) return 'rgba(249,115,22,0.6)';
+    if (v < 35) return 'rgba(239,68,68,0.7)';
+    return 'rgba(185,28,28,0.9)';
+}
+
+// --- Current status ---
+
+function toggleCompact() {
+    compactMode = !compactMode;
+    localStorage.setItem('statusCompact', compactMode ? '1' : '0');
+    applyCompactMode();
+}
+
+function applyCompactMode() {
+    document.getElementById('status-compact').classList.toggle('hidden', !compactMode);
+    document.getElementById('current-status').classList.toggle('hidden', compactMode);
+    document.getElementById('compact-toggle-label').textContent = compactMode ? 'Detaille' : 'Compact';
+}
+
+async function loadCurrentStatus() {
+    const data = await fetch('/api/current').then(r => r.json());
+    if (!data.length) {
+        document.getElementById('current-status').innerHTML = '<p class="text-slate-400 text-sm">En attente de la premiere collecte...</p>';
+        return;
+    }
+
+    const groups = { metro: [], rer: [], tram: [] };
+    data.forEach(d => { if (groups[d.line_type]) groups[d.line_type].push(d); });
+    const labels = { metro: 'Metro', rer: 'RER', tram: 'Tramway' };
+
+    const alertCount = data.filter(d => d.status === 'alerte').length;
+    const travauxCount = data.filter(d => d.status === 'normal_trav').length;
+    const normalCount = data.length - alertCount - travauxCount;
+
+    let compactHtml = `
+        <div class="flex items-center gap-4 mb-3 text-[11px] font-semibold">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>${normalCount} normales</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>${travauxCount} travaux</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>${alertCount} perturbees</span>
+        </div>`;
+    for (const [type, lines] of Object.entries(groups)) {
+        if (!lines.length) continue;
+        compactHtml += `<div class="flex items-center gap-2 flex-wrap mb-2">
+            <img src="/static/icons/${type}.svg" alt="${type}" width="16" height="16" style="flex-shrink:0" onerror="this.outerHTML=typeIcon('${type}')">`;
+        for (const l of lines) {
+            const dot = l.status === 'normal' ? 'ring-emerald-400/60' : l.status === 'alerte' ? 'ring-red-500/70' : 'ring-amber-400/60';
+            const title = `${type.toUpperCase()} ${l.line_id} — ${statusLabel(l.status)}${l.title ? ': ' + cleanMsg(l.title).replace(/"/g, "'") : ''}`;
+            compactHtml += `<a href="/line/${l.line_type}/${l.line_id}" title="${title}" class="relative ring-2 ${dot} rounded-full hover:scale-110 transition-transform inline-block">${lineIcon(l.line_type, l.line_id, 'sm')}</a>`;
+        }
+        compactHtml += '</div>';
+    }
+    document.getElementById('status-compact').innerHTML = compactHtml;
+
+    let html = '';
+    for (const [type, lines] of Object.entries(groups)) {
+        if (!lines.length) continue;
+        html += `<div>
+            <div class="flex items-center mb-2.5"><img src="/static/icons/${type}.svg" alt="${type}" width="20" height="20" style="margin-right:6px;flex-shrink:0" onerror="this.outerHTML=''">${typeIcon(type)}<span class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">${labels[type]}</span></div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">`;
+
+        for (const l of lines) {
+            const ok = l.status === 'normal';
+            const ring = ok ? 'ring-emerald-400/30' : l.status === 'alerte' ? 'ring-red-400/40' : 'ring-amber-400/30';
+            const bg = ok ? '' : l.status === 'alerte' ? 'bg-red-50 dark:bg-red-950/30' : 'bg-amber-50 dark:bg-amber-950/30';
+            const dot = ok ? 'bg-emerald-500' : l.status === 'alerte' ? 'bg-red-500' : 'bg-amber-500';
+
+            html += `
+                <a href="/line/${l.line_type}/${l.line_id}" class="flex items-center gap-2.5 p-2 rounded-xl ring-1 ${ring} ${bg} hover:scale-[1.02] active:scale-[0.98] transition-all">
+                    ${lineIcon(type, l.line_id)}
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full ${dot}"></span>
+                            <span class="text-[11px] font-semibold">${statusLabel(l.status)}</span>
+                        </div>
+                        ${!ok ? `<p class="text-[9px] text-slate-400 truncate mt-0.5 leading-tight">${cleanMsg(l.title) || ''}</p>` : ''}
+                    </div>
+                </a>`;
+        }
+        html += '</div></div>';
+    }
+    document.getElementById('current-status').innerHTML = html;
+    applyCompactMode();
+}
+
+// --- Sparklines ---
+
+async function loadSparklines() {
+    try {
+        const list = await fetch('/api/sparklines?days=7').then(r => r.json());
+        sparklineMap = {};
+        list.forEach(x => { sparklineMap[`${x.line_type}-${x.line_id}`] = x.series; });
+    } catch (e) { sparklineMap = {}; }
+}
+
+function renderSparkline(series, color) {
+    if (!series || !series.length) return '';
+    const w = 56, h = 16, pad = 1;
+    const vals = series.map(v => v == null ? 0 : v);
+    const max = Math.max(5, ...vals);
+    const step = (w - 2 * pad) / (series.length - 1 || 1);
+    const pts = series.map((v, i) => {
+        const x = pad + i * step;
+        const y = v == null ? h / 2 : h - pad - (v / (max || 1)) * (h - 2 * pad);
+        return [x, y, v];
+    });
+    const poly = pts.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const lastPt = pts[pts.length - 1];
+    return `
+        <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="shrink-0" style="overflow:visible">
+            <polyline points="${poly}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+            ${lastPt[2] != null ? `<circle cx="${lastPt[0].toFixed(1)}" cy="${lastPt[1].toFixed(1)}" r="1.6" fill="${color}"/>` : ''}
+        </svg>`;
+}
+
+// --- Rankings (pires + meilleures) ---
+
+async function loadRanking() {
+    const [r, _] = await Promise.all([
+        fetch(`/api/ranking?${buildQuery()}`).then(r => r.json()),
+        loadSparklines(),
+    ]);
+    rankingData = r;
+    renderRanking();
+    renderBest();
+}
+
+function renderRankingRow(d, i, bestMode) {
+    const pct = d.disruption_pct || 0;
+    const barColor = pct > 15 ? 'bg-red-500' : pct > 5 ? 'bg-amber-400' : 'bg-emerald-500';
+    const textColor = pct > 15 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
+    const sparkColor = pct > 15 ? '#ef4444' : pct > 5 ? '#f59e0b' : '#10b981';
+    const medal = bestMode
+        ? (i === 0 ? 'text-emerald-500' : i === 1 ? 'text-emerald-400' : i === 2 ? 'text-emerald-300' : 'text-slate-300 dark:text-slate-600')
+        : (i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-400' : 'text-slate-300 dark:text-slate-600');
+    const spark = renderSparkline(sparklineMap[`${d.line_type}-${d.line_id}`], sparkColor);
+
+    return `
+        <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-2.5 py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition group">
+            <span class="text-[11px] font-black w-5 text-right ${medal}">${i + 1}</span>
+            ${lineIcon(d.line_type, d.line_id, 'sm')}
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-semibold capitalize">${d.line_type} ${d.line_id}</span>
+                    <div class="flex items-center gap-2">
+                        ${spark}
+                        <span class="text-xs font-black tabular-nums ${textColor} w-10 text-right">${pct}%</span>
+                    </div>
+                </div>
+                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 mt-1">
+                    <div class="${barColor} h-1 rounded-full transition-all" style="width:${Math.min(pct, 100)}%"></div>
+                </div>
+            </div>
+        </a>`;
+}
+
+function renderRanking() {
+    const data = rankingType === 'all' ? rankingData : rankingData.filter(d => d.line_type === rankingType);
+    if (!data.length) {
+        document.getElementById('ranking-list').innerHTML = '<p class="text-slate-400 text-sm">Pas encore de donnees</p>';
+        return;
+    }
+    document.getElementById('ranking-list').innerHTML = data.map((d, i) => renderRankingRow(d, i, false)).join('');
+}
+
+function renderBest() {
+    let data = bestType === 'all' ? rankingData : rankingData.filter(d => d.line_type === bestType);
+    data = [...data].sort((a, b) => (a.disruption_pct || 0) - (b.disruption_pct || 0));
+    if (!data.length) {
+        document.getElementById('best-list').innerHTML = '<p class="text-slate-400 text-sm">Pas encore de donnees</p>';
+        return;
+    }
+    document.getElementById('best-list').innerHTML = data.map((d, i) => renderRankingRow(d, i, true)).join('');
+}
+
+// --- Charts ---
+
+const CHART_COLORS = {
+    bar: (v) => v > 15 ? '#ef4444' : v > 5 ? '#f59e0b' : '#10b981',
+};
+
+async function loadByHour() {
+    const data = await fetch(`/api/by-hour?${chartQuery('hours')}`).then(r => r.json());
+    if (chartHours) chartHours.destroy();
+    chartHours = new Chart(document.getElementById('chart-hours'), {
+        type: 'bar',
+        data: {
+            labels: data.map(d => `${d.hour}h`),
+            datasets: [{ data: data.map(d => d.pct), backgroundColor: data.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 6, borderSkipped: false }]
+        },
+        options: chartOpts()
+    });
+}
+
+async function loadByDow() {
+    const data = await fetch(`/api/by-dow?${chartQuery('dow')}`).then(r => r.json());
+    const reordered = [];
+    for (let i = 1; i <= 6; i++) reordered.push(data.find(d => d.dow === i) || { dow: i, pct: 0 });
+    reordered.push(data.find(d => d.dow === 0) || { dow: 0, pct: 0 });
+
+    if (chartDow) chartDow.destroy();
+    chartDow = new Chart(document.getElementById('chart-dow'), {
+        type: 'bar',
+        data: {
+            labels: reordered.map(d => DOW_LABELS[d.dow]),
+            datasets: [{ data: reordered.map(d => d.pct), backgroundColor: reordered.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 6, borderSkipped: false }]
+        },
+        options: chartOpts()
+    });
+}
+
+function chartOpts() {
+    return {
+        responsive: true, maintainAspectRatio: true,
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', titleFont: { size: 11 }, bodyFont: { size: 12, weight: 600 }, padding: 10, cornerRadius: 8, callbacks: { label: ctx => `${ctx.parsed.y}%` } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { drawBorder: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+    };
+}
+
+// --- Causes ---
+
+const CAUSE_LABELS = {
+    'perturbation': 'Incident / Panne',
+    'travaux': 'Travaux',
+    'information': 'Information',
+    'greve': 'Greve',
+    'manifestation': 'Manifestation',
+    'accident voyageur': 'Accident voyageur',
+    'colis suspect': 'Colis suspect',
+    'panne de signalisation': 'Panne signalisation',
+    '': 'Non precise',
+};
+const CAUSE_COLORS = ['#ef4444','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4'];
+
+async function loadCauses() {
+    const allData = await fetch(`/api/causes?${buildQuery()}`).then(r => r.json());
+    const data = allData.filter(d => d.cause !== 'travaux');
+    const totalEl = document.getElementById('causes-total');
+    if (!data.length) {
+        document.getElementById('causes-list').innerHTML = '<p class="text-slate-400 text-[11px]">Pas encore de donnees</p>';
+        if (chartCauses) { chartCauses.destroy(); chartCauses = null; }
+        if (totalEl) totalEl.innerHTML = '';
+        return;
+    }
+    const total = data.reduce((s, d) => s + d.count, 0);
+
+    if (chartCauses) chartCauses.destroy();
+    chartCauses = new Chart(document.getElementById('chart-causes'), {
+        type: 'doughnut',
+        data: {
+            labels: data.slice(0, 8).map(d => CAUSE_LABELS[d.cause] || d.cause || 'Autre'),
+            datasets: [{ data: data.slice(0, 8).map(d => d.count), backgroundColor: CAUSE_COLORS, borderWidth: 0, hoverOffset: 8 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: true,
+            plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', cornerRadius: 8, padding: 8, callbacks: { label: c => ` ${c.label}: ${c.parsed} (${(100*c.parsed/total).toFixed(1)}%)` } } },
+            cutout: '65%',
+        }
+    });
+
+    if (totalEl) totalEl.innerHTML = `
+        <span class="text-2xl font-black tabular-nums">${total.toLocaleString('fr')}</span>
+        <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">incidents</span>`;
+
+    let html = '';
+    data.forEach((d, i) => {
+        const pct = total > 0 ? (100 * d.count / total).toFixed(1) : 0;
+        const color = CAUSE_COLORS[i] || '#6B7280';
+        const label = CAUSE_LABELS[d.cause] || d.cause || 'Autre';
+        html += `
+            <div class="flex items-center gap-2 py-0.5">
+                <span class="w-2 h-2 rounded-full shrink-0" style="background:${color}"></span>
+                <span class="text-[11px] font-semibold flex-1 truncate">${label}</span>
+                <span class="text-[11px] font-black tabular-nums text-slate-500">${d.count}</span>
+                <span class="text-[10px] text-slate-400 w-9 text-right tabular-nums">${pct}%</span>
+            </div>`;
+    });
+    document.getElementById('causes-list').innerHTML = html;
+}
+
+// --- Init ---
+
+function initTabs() {
+    renderTypeTabs('ranking-tabs', 'ranking', 'all');
+    renderTypeTabs('best-tabs', 'best', 'all');
+    renderTypeTabs('hours-tabs', 'hours', 'all');
+    renderTypeTabs('dow-tabs', 'dow', 'all');
+}
+
+loadYearTabs();
+initTabs();
+loadAll();
+// Refresh feed + prediction every 60 s so timestamps stay fresh
+setInterval(() => { loadFeed(); loadPrediction(); }, 60000);
+</script>
+{% endblock %}

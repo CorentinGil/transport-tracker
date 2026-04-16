@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Remboursements - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<div class="flex items-center justify-between mb-5">
+    <div>
+        <h1 class="text-xl font-black">Campagnes de remboursement</h1>
+        <p class="text-sm text-slate-400">Suivez les offres de remboursement RATP / IDFM</p>
+    </div>
+    <button onclick="showForm()" class="px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-xs font-bold hover:opacity-90 transition">
+        + Ajouter
+    </button>
+</div>
+
+<!-- Add form (hidden by default) -->
+<div id="add-form" class="card mb-5 hidden">
+    <h2 class="text-base font-bold mb-3">Nouvelle campagne</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Titre</label>
+            <input type="text" id="f-title" placeholder="Ex: Remboursement RER B janvier" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+        </div>
+        <div>
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Lignes concernees</label>
+            <input type="text" id="f-lines" placeholder="Ex: RER B, Metro 13" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+        </div>
+        <div>
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Date debut</label>
+            <input type="date" id="f-start" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+        </div>
+        <div>
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Date limite</label>
+            <input type="date" id="f-end" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+        </div>
+        <div class="md:col-span-2">
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Lien (optionnel)</label>
+            <input type="url" id="f-url" placeholder="https://..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+        </div>
+        <div class="md:col-span-2">
+            <label class="text-[11px] font-semibold text-slate-400 uppercase block mb-1">Description</label>
+            <textarea id="f-desc" rows="2" placeholder="Details de l'offre..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"></textarea>
+        </div>
+    </div>
+    <div class="flex gap-2 mt-3">
+        <button onclick="addCampaign()" class="px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold hover:bg-emerald-600 transition">Sauvegarder</button>
+        <button onclick="hideForm()" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-xl text-xs font-bold hover:opacity-80 transition">Annuler</button>
+    </div>
+</div>
+
+<!-- Active campaigns -->
+<div id="active-section" class="mb-5">
+    <h2 class="text-sm font-bold text-emerald-500 uppercase tracking-wider mb-3">En cours</h2>
+    <div id="active-list" class="space-y-2"></div>
+</div>
+
+<!-- Expired campaigns -->
+<div id="expired-section">
+    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Expirees</h2>
+    <div id="expired-list" class="space-y-2"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showForm() { document.getElementById('add-form').classList.remove('hidden'); }
+function hideForm() { document.getElementById('add-form').classList.add('hidden'); }
+
+async function addCampaign() {
+    const data = {
+        title: document.getElementById('f-title').value,
+        description: document.getElementById('f-desc').value,
+        lines: document.getElementById('f-lines').value,
+        start_date: document.getElementById('f-start').value,
+        end_date: document.getElementById('f-end').value,
+        url: document.getElementById('f-url').value,
+    };
+    if (!data.title) return;
+    await fetch('/api/reimbursements', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    hideForm();
+    loadCampaigns();
+}
+
+async function deleteCampaign(id) {
+    if (!confirm('Supprimer cette campagne ?')) return;
+    await fetch(`/api/reimbursements/${id}`, { method: 'DELETE' });
+    loadCampaigns();
+}
+
+async function loadCampaigns() {
+    const data = await fetch('/api/reimbursements').then(r => r.json());
+    const today = new Date().toISOString().slice(0, 10);
+
+    const active = data.filter(d => !d.end_date || d.end_date >= today);
+    const expired = data.filter(d => d.end_date && d.end_date < today);
+
+    document.getElementById('active-list').innerHTML = active.length ? active.map(renderCard).join('') : '<p class="text-slate-400 text-sm">Aucune campagne en cours</p>';
+    document.getElementById('expired-list').innerHTML = expired.length ? expired.map(d => renderCard(d, true)).join('') : '<p class="text-slate-400 text-sm">Aucune campagne expiree</p>';
+
+    document.getElementById('active-section').style.display = active.length ? '' : 'none';
+    document.getElementById('expired-section').style.display = expired.length ? '' : 'none';
+}
+
+function renderCard(d, expired = false) {
+    const today = new Date().toISOString().slice(0, 10);
+    const daysLeft = d.end_date ? Math.ceil((new Date(d.end_date) - new Date(today)) / 86400000) : null;
+    const urgent = daysLeft !== null && daysLeft <= 7 && daysLeft >= 0;
+
+    return `
+        <div class="card !p-4 ${expired ? 'opacity-60' : ''} ${urgent ? 'ring-2 ring-red-400/50' : ''}">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="text-sm font-bold">${d.title}</h3>
+                        ${urgent ? '<span class="px-2 py-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full text-[10px] font-bold">J-' + daysLeft + '</span>' : ''}
+                        ${expired ? '<span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-full text-[10px] font-bold">Expiree</span>' : ''}
+                    </div>
+                    ${d.lines ? `<p class="text-[11px] text-slate-400 mt-1">Lignes : <span class="font-semibold text-slate-500 dark:text-slate-300">${d.lines}</span></p>` : ''}
+                    ${d.description ? `<p class="text-xs text-slate-500 dark:text-slate-400 mt-1">${d.description}</p>` : ''}
+                    <div class="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                        ${d.start_date ? `<span>Du ${d.start_date}</span>` : ''}
+                        ${d.end_date ? `<span>au ${d.end_date}</span>` : ''}
+                        ${d.url ? `<a href="${d.url}" target="_blank" class="text-blue-500 hover:underline font-semibold">Voir l'offre</a>` : ''}
+                    </div>
+                </div>
+                <button onclick="deleteCampaign(${d.id})" class="p-1.5 text-slate-300 hover:text-red-500 transition shrink-0" title="Supprimer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+            </div>
+        </div>`;
+}
+
+loadCampaigns();
+</script>
+{% endblock %}

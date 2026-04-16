@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Transport Tracker{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/favicon.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        // Theme toggle
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+
+        /* RATP official line colors */
+        .line-metro-1  { background: #FFCD00; color: #000; }
+        .line-metro-2  { background: #003CA6; color: #fff; }
+        .line-metro-3  { background: #837902; color: #fff; }
+        .line-metro-3b { background: #6EC4E8; color: #000; }
+        .line-metro-4  { background: #CF009E; color: #fff; }
+        .line-metro-5  { background: #FF7E2E; color: #fff; }
+        .line-metro-6  { background: #6ECA97; color: #000; }
+        .line-metro-7  { background: #FA9ABA; color: #000; }
+        .line-metro-7b { background: #6ECA97; color: #000; }
+        .line-metro-8  { background: #E19BDF; color: #000; }
+        .line-metro-9  { background: #B6BD00; color: #000; }
+        .line-metro-10 { background: #C9910D; color: #fff; }
+        .line-metro-11 { background: #704B1C; color: #fff; }
+        .line-metro-12 { background: #007852; color: #fff; }
+        .line-metro-13 { background: #6EC4E8; color: #000; }
+        .line-metro-14 { background: #62259D; color: #fff; }
+        .line-rer-A { background: #E3051C; color: #fff; }
+        .line-rer-B { background: #5291CE; color: #fff; }
+        .line-rer-C { background: #FFCD00; color: #000; }
+        .line-rer-D { background: #00A86B; color: #fff; }
+        .line-rer-E { background: #BD76A1; color: #fff; }
+        .line-tram-T1  { background: #003CA6; color: #fff; }
+        .line-tram-T2  { background: #CF009E; color: #fff; }
+        .line-tram-T3a { background: #FF7E2E; color: #fff; }
+        .line-tram-T3b { background: #00A86B; color: #fff; }
+        .line-tram-T4  { background: #E3051C; color: #fff; }
+        .line-tram-T5  { background: #6B7280; color: #fff; }
+        .line-tram-T6  { background: #E3051C; color: #fff; }
+        .line-tram-T7  { background: #704B1C; color: #fff; }
+        .line-tram-T8  { background: #837902; color: #fff; }
+        .line-tram-T9  { background: #003CA6; color: #fff; }
+        .line-tram-T10 { background: #C9910D; color: #fff; }
+        .line-tram-T11 { background: #FF7E2E; color: #fff; }
+        .line-tram-T12 { background: #007852; color: #fff; }
+        .line-tram-T13 { background: #6EC4E8; color: #000; }
+
+        /* Badge shapes - Metro: circle, RER: rounded square, Tram: pill */
+        .line-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.7rem; flex-shrink: 0;
+            width: 2rem; height: 2rem; border-radius: 9999px;
+            letter-spacing: -0.02em;
+            box-shadow: 0 1px 3px rgba(0,0,0,.15);
+        }
+        .line-badge-lg { width: 2.75rem; height: 2.75rem; font-size: 0.9rem; }
+        .badge-rer { border-radius: 0.375rem; }
+        .badge-tram { border-radius: 9999px; font-size: 0.55rem; padding: 0 0.15rem; }
+
+        /* Type icons in section headers */
+        .type-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 1.5rem; height: 1.5rem; border-radius: 9999px;
+            font-weight: 800; font-size: 0.6rem; color: #fff; margin-right: 0.35rem;
+        }
+        .type-icon-metro { background: #003B82; border-radius: 9999px; }
+        .type-icon-rer   { background: #003B82; border-radius: 0.2rem; }
+        .type-icon-tram   { background: #000; border-radius: 9999px; }
+
+        /* Glass card */
+        .card {
+            border-radius: 1rem; padding: 1.25rem;
+            background: rgba(255,255,255,0.85);
+            border: 1px solid rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+            backdrop-filter: blur(12px);
+        }
+        .dark .card {
+            background: rgba(30,41,59,0.8);
+            border-color: rgba(255,255,255,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        /* Pulse */
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+        /* Tab pills */
+        .tab-pill {
+            padding: 0.35rem 0.75rem; border-radius: 9999px;
+            font-size: 0.75rem; font-weight: 600;
+            transition: all 150ms;
+            cursor: pointer; user-select: none;
+        }
+        .tab-pill.active {
+            background: #003B82; color: #fff;
+            box-shadow: 0 2px 8px rgba(0,59,130,0.3);
+        }
+        .tab-pill:not(.active) {
+            background: rgba(0,0,0,0.04); color: #64748b;
+        }
+        .dark .tab-pill:not(.active) {
+            background: rgba(255,255,255,0.06); color: #94a3b8;
+        }
+        .tab-pill:not(.active):hover {
+            background: rgba(0,0,0,0.08);
+        }
+        .dark .tab-pill:not(.active):hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Nav links */
+        .nav-link {
+            color: #64748b;
+        }
+        .nav-link:hover {
+            background: rgba(0,0,0,0.05);
+            color: #1e293b;
+        }
+        .dark .nav-link:hover {
+            background: rgba(255,255,255,0.08);
+            color: #f1f5f9;
+        }
+        .nav-link.active {
+            background: #003B82;
+            color: #fff !important;
+            box-shadow: 0 2px 8px rgba(0,59,130,0.25);
+        }
+        .nav-highlight:not(.active) {
+            background: linear-gradient(135deg, rgba(0,59,130,0.15), rgba(220,38,38,0.12));
+            color: #003B82;
+            border: 1px solid rgba(0,59,130,0.25);
+            font-weight: 700 !important;
+            box-shadow: 0 1px 4px rgba(0,59,130,0.1);
+        }
+        .nav-highlight:not(.active):hover {
+            background: linear-gradient(135deg, rgba(0,59,130,0.22), rgba(220,38,38,0.18));
+            color: #001F5C !important;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(0,59,130,0.2);
+        }
+        .dark .nav-highlight:not(.active) {
+            background: linear-gradient(135deg, rgba(100,160,255,0.18), rgba(248,113,113,0.14));
+            color: #bfdbfe;
+            border: 1px solid rgba(100,160,255,0.25);
+        }
+        .dark .nav-highlight:not(.active):hover {
+            background: linear-gradient(135deg, rgba(100,160,255,0.26), rgba(248,113,113,0.2));
+            color: #fff !important;
+        }
+        .nav-highlight .hl-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            margin-right: 6px; width: 18px; height: 16px; border-radius: 4px;
+            background: #DC2626; color: #fff; font-size: 9px; font-weight: 900;
+            letter-spacing: 0.02em;
+        }
+
+        /* Smooth scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen transition-colors">
+
+    <!-- Nav -->
+    <nav class="sticky top-0 z-50 backdrop-blur-xl bg-white/70 dark:bg-slate-900/70 border-b border-slate-200/60 dark:border-slate-700/60">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+            <a href="/" class="flex items-center gap-3">
+                <div class="relative w-11 h-11">
+                    <svg viewBox="0 0 40 40" class="w-11 h-11 drop-shadow-sm" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="tt-bg" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0" stop-color="#0056C9"/>
+                                <stop offset="1" stop-color="#001847"/>
+                            </linearGradient>
+                        </defs>
+                        <rect width="40" height="40" rx="10" fill="url(#tt-bg)"/>
+                        <g fill="none" stroke="#fff" stroke-linecap="round">
+                            <circle cx="20" cy="20" r="12.5" stroke-width="1.3" opacity="0.85"/>
+                            <ellipse cx="20" cy="20" rx="5" ry="12.5" stroke-width="1" opacity="0.35"/>
+                            <path d="M8.5 16 Q20 14 31.5 16" stroke-width="0.8" opacity="0.3"/>
+                            <path d="M8.5 24 Q20 26 31.5 24" stroke-width="0.8" opacity="0.3"/>
+                            <line x1="7.5" y1="20" x2="32.5" y2="20" stroke-width="0.9" opacity="0.35"/>
+                        </g>
+                        <path d="M 9 27.5 C 14 18, 24 19, 31 12.5" fill="none" stroke="#FFCD00" stroke-width="2.6" stroke-linecap="round"/>
+                        <circle cx="9" cy="27.5" r="2" fill="#fff"/>
+                        <circle cx="31" cy="12.5" r="3" fill="#E3051C" stroke="#fff" stroke-width="1.1"/>
+                    </svg>
+                </div>
+                <div class="leading-tight">
+                    <span class="text-[17px] font-extrabold tracking-tight">Transport Tracker</span>
+                </div>
+            </a>
+            <div class="flex items-center gap-4">
+                <nav class="flex items-center gap-0.5 overflow-x-auto">
+                    <a href="/" class="nav-link px-3.5 py-2 rounded-full text-[13px] font-bold transition whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Direct
+                    </a>
+                    <a href="/map" class="nav-link px-3.5 py-2 rounded-full text-[13px] font-bold transition whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                        Carte
+                    </a>
+                    <a href="/my-commute" class="nav-link px-3.5 py-2 rounded-full text-[13px] font-bold transition whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        Mon trajet
+                    </a>
+                    <span class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 self-center shrink-0"></span>
+                    <a href="/punctuality" class="nav-link nav-highlight px-4 py-2 rounded-full text-[13px] transition whitespace-nowrap">
+<img src="/static/icons/rer.svg" alt="" width="16" height="16" class="inline -mt-0.5 mr-1" onerror="this.remove()">
+                        Pires RER &amp; Transilien
+                    </a>
+                    <a href="/worst-metro-tram" class="nav-link nav-highlight px-4 py-2 rounded-full text-[13px] transition whitespace-nowrap">
+<img src="/static/icons/metro.svg" alt="" width="16" height="16" class="inline -mt-0.5 mr-1" onerror="this.remove()">
+                        Pires Metro &amp; Tram
+                    </a>
+                    <span class="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 self-center shrink-0"></span>
+                    <a href="/compare" class="nav-link px-3.5 py-2 rounded-full text-[13px] font-bold transition whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                        Comparer
+                    </a>
+                    <a href="/reimbursements" class="nav-link px-3.5 py-2 rounded-full text-[13px] font-bold transition whitespace-nowrap">
+                        <svg class="w-3.5 h-3.5 inline -mt-0.5 mr-1" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.121 15.536c-1.171 1.952-3.07 1.952-4.242 0-1.172-1.953-1.172-5.119 0-7.072 1.171-1.952 3.07-1.952 4.242 0M8 10.5h4m-4 3h4m9-1.5a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Rembours.
+                    </a>
+                </nav>
+                <div class="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <div class="pulse-dot bg-emerald-500"></div>
+                    Actif
+                </div>
+                <button onclick="manualScrape()" title="Forcer une collecte" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+                <button onclick="toggleTheme()" title="Changer de theme" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                    <svg class="w-4 h-4 text-slate-500 dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                    <svg class="w-4 h-4 text-slate-400 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            updateChartTheme();
+        }
+
+        function updateChartTheme() {
+            const dark = document.documentElement.classList.contains('dark');
+            Chart.defaults.color = dark ? '#94a3b8' : '#64748b';
+            Chart.defaults.borderColor = dark ? '#334155' : '#e2e8f0';
+            // Reload charts if they exist
+            if (typeof loadAll === 'function') loadAll();
+        }
+
+        async function manualScrape() {
+            const btn = event.currentTarget;
+            btn.classList.add('animate-spin');
+            await fetch('/api/scrape', { method: 'POST' });
+            btn.classList.remove('animate-spin');
+            location.reload();
+        }
+
+        function statusLabel(s) {
+            if (s === 'normal') return 'Normal';
+            if (s === 'alerte') return 'Perturbation';
+            if (s === 'normal_trav') return 'Travaux';
+            return s;
+        }
+
+        function badgeClass(type) {
+            if (type === 'rer') return 'badge-rer';
+            if (type === 'tram') return 'badge-tram';
+            return '';
+        }
+
+        function typeIcon(type) {
+            if (type === 'metro') return '<span class="type-icon type-icon-metro">M</span>';
+            if (type === 'rer') return '<span class="type-icon type-icon-rer">R</span>';
+            if (type === 'tram') return '<span class="type-icon type-icon-tram">T</span>';
+            return '';
+        }
+
+        const DOW_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+        // Line icon helper — uses local SVGs with CSS badge fallback
+        function lineIcon(type, id, size = 'sm') {
+            const px = size === 'lg' ? 36 : size === 'md' ? 28 : 22;
+            const localName = `${type}-${id}`;
+            const cls = size === 'lg' ? 'line-badge-lg' : '';
+            // Always try the SVG icon first, fallback to CSS badge
+            return `<img src="/static/icons/${localName}.svg" alt="${type} ${id}" width="${px}" height="${px}" style="flex-shrink:0" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'"><span class="line-badge ${cls} ${badgeClass(type)} line-${type}-${id}" style="display:none;width:${px}px;height:${px}px;font-size:${px*0.35}px">${id}</span>`;
+        }
+
+        // Type header icon (generic M / RER / T)
+        function typeHeaderIcon(type) {
+            return `<img src="/static/icons/${type}.svg" alt="${type}" width="20" height="20" style="flex-shrink:0;margin-right:4px" onerror="this.outerHTML=typeIcon(type)">`;
+        }
+
+        // Highlight active nav link
+        const path = window.location.pathname;
+        document.querySelectorAll('.nav-link').forEach(a => {
+            const href = a.getAttribute('href');
+            if (href === '/' && path === '/') a.classList.add('active');
+            else if (href !== '/' && path.startsWith(href)) a.classList.add('active');
+        });
+
+        // Init Chart.js theme
+        const isDark = document.documentElement.classList.contains('dark');
+        Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
+        Chart.defaults.borderColor = isDark ? '#334155' : '#e2e8f0';
+        Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

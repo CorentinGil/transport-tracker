@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Mon trajet - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<h1 class="text-xl font-black mb-2">Mon trajet</h1>
+<p class="text-sm text-slate-400 mb-5">Configurez vos lignes pour un suivi personnalise</p>
+
+<!-- Line selector -->
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-3">Mes lignes</h2>
+    <div id="my-lines" class="flex flex-wrap gap-2 mb-3"></div>
+    <div>
+        <p class="text-[11px] text-slate-400 mb-2">Ajouter une ligne :</p>
+        <div id="line-picker" class="space-y-3"></div>
+    </div>
+</div>
+
+<!-- Score card (shown when lines selected) -->
+<div id="score-section" class="hidden">
+    <!-- Score -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5" id="score-cards"></div>
+
+    <!-- Heatmap -->
+    <div class="card mb-5">
+        <h2 class="text-base font-bold mb-1">Heatmap des perturbations</h2>
+        <p class="text-[11px] text-slate-400 mb-3">Probabilite de perturbation par creneau pour vos lignes</p>
+        <div id="heatmap" class="overflow-x-auto"></div>
+    </div>
+
+    <!-- Predictions -->
+    <div class="card mb-5">
+        <h2 class="text-base font-bold mb-1">Predictions</h2>
+        <p class="text-[11px] text-slate-400 mb-3">Probabilite de perturbation sur vos lignes par creneau</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 mb-2">Maintenant</h3>
+                <div id="predict-now" class="text-2xl font-black">—</div>
+            </div>
+            <div>
+                <h3 class="text-xs font-bold text-slate-500 mb-2">Demain matin (8h)</h3>
+                <div id="predict-tomorrow" class="text-2xl font-black">—</div>
+            </div>
+        </div>
+        <div id="predict-week" class="mt-4"></div>
+    </div>
+
+    <!-- Delay calculator -->
+    <div class="card mb-5">
+        <h2 class="text-base font-bold mb-1">Temps perdu estime</h2>
+        <p class="text-[11px] text-slate-400 mb-3">Base sur le taux de perturbation et une estimation de 10 min de retard par incident</p>
+        <div id="delay-calc" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+    </div>
+
+    <!-- Per-line breakdown -->
+    <div class="card">
+        <h2 class="text-base font-bold mb-3">Detail par ligne</h2>
+        <div id="line-breakdown" class="space-y-2"></div>
+    </div>
+</div>
+
+<div id="empty-state" class="card text-center py-10">
+    <p class="text-slate-400">Selectionnez vos lignes ci-dessus pour voir vos stats</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let myLines = JSON.parse(localStorage.getItem('myLines') || '[]');
+let allPredictions = [];
+
+const DOW_FULL = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+const HOURS = Array.from({length:24}, (_,i) => i);
+
+function saveLines() {
+    localStorage.setItem('myLines', JSON.stringify(myLines));
+}
+
+function addLine(type, id) {
+    if (!myLines.find(l => l.type === type && l.id === id)) {
+        myLines.push({ type, id });
+        saveLines();
+        render();
+    }
+}
+
+function removeLine(type, id) {
+    myLines = myLines.filter(l => !(l.type === type && l.id === id));
+    saveLines();
+    render();
+}
+
+async function render() {
+    renderMyLines();
+    renderPicker();
+    if (myLines.length) {
+        document.getElementById('score-section').classList.remove('hidden');
+        document.getElementById('empty-state').classList.add('hidden');
+        await Promise.all([loadScore(), loadHeatmap(), loadPredictions(), loadDelay()]);
+    } else {
+        document.getElementById('score-section').classList.add('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+    }
+}
+
+function renderMyLines() {
+    document.getElementById('my-lines').innerHTML = myLines.length
+        ? myLines.map(l => `
+            <span class="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                ${lineIcon(l.type, l.id, 'sm')}
+                <span class="text-xs font-bold capitalize">${l.type} ${l.id}</span>
+                <button onclick="removeLine('${l.type}','${l.id}')" class="ml-1 text-slate-400 hover:text-red-500 text-xs font-bold">&times;</button>
+            </span>
+        `).join('')
+        : '<p class="text-slate-400 text-sm">Aucune ligne selectionnee</p>';
+}
+
+async function renderPicker() {
+    const lines = await fetch('/api/lines').then(r => r.json());
+    if (!lines.length) {
+        // Use default lines if no data yet
+        const defaults = {metro:['1','2','3','3b','4','5','6','7','7b','8','9','10','11','12','13','14'],rer:['A','B','C','D','E']};
+        lines.length = 0;
+        for (const [t, ids] of Object.entries(defaults)) ids.forEach(id => lines.push({line_type:t, line_id:id}));
+    }
+
+    const groups = {};
+    lines.forEach(l => {
+        if (!groups[l.line_type]) groups[l.line_type] = [];
+        groups[l.line_type].push(l.line_id);
+    });
+
+    const labels = {metro:'Metro', rer:'RER', tram:'Tram'};
+    let html = '';
+    for (const [type, ids] of Object.entries(groups)) {
+        html += `<div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[10px] font-bold text-slate-400 uppercase w-12">${labels[type] || type}</span>`;
+        for (const id of ids) {
+            const selected = myLines.find(l => l.type === type && l.id === id);
+            html += `<button onclick="addLine('${type}','${id}')" class="transition hover:scale-110 ${selected ? 'opacity-30' : ''}" ${selected ? 'disabled' : ''}>
+                ${lineIcon(type, id, 'sm')}
+            </button>`;
+        }
+        html += '</div>';
+    }
+    document.getElementById('line-picker').innerHTML = html;
+}
+
+async function loadScore() {
+    const linesParam = myLines.map(l => `${l.type}-${l.id}`).join(',');
+    const data = await fetch(`/api/multi-stats?lines=${linesParam}`).then(r => r.json());
+
+    let totalChecks = 0, totalDisrupted = 0;
+    data.forEach(d => { totalChecks += d.total; totalDisrupted += d.disrupted; });
+    const globalPct = totalChecks > 0 ? (100 * totalDisrupted / totalChecks).toFixed(1) : 0;
+
+    // Score: 100 - disruption rate (higher = better)
+    const score = (100 - globalPct).toFixed(0);
+    const scoreColor = score >= 90 ? 'text-emerald-500' : score >= 80 ? 'text-amber-500' : 'text-red-500';
+    const scoreEmoji = score >= 90 ? 'Excellent' : score >= 80 ? 'Correct' : score >= 70 ? 'Mediocre' : 'Catastrophique';
+
+    document.getElementById('score-cards').innerHTML = `
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Score trajet</span>
+            <span class="text-3xl font-black mt-1 block ${scoreColor}">${score}<span class="text-lg">/100</span></span>
+            <span class="text-[10px] text-slate-400 mt-0.5 block">${scoreEmoji}</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Taux perturbation</span>
+            <span class="text-2xl font-black mt-1 block text-red-500">${globalPct}%</span>
+            <span class="text-[10px] text-slate-400 mt-0.5 block">sur ${myLines.length} ligne${myLines.length>1?'s':''}</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Mesures</span>
+            <span class="text-2xl font-black mt-1 block">${totalChecks.toLocaleString('fr')}</span>
+            <span class="text-[10px] text-slate-400 mt-0.5 block">points de donnees</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Alertes</span>
+            <span class="text-2xl font-black mt-1 block text-red-500">${totalDisrupted.toLocaleString('fr')}</span>
+            <span class="text-[10px] text-slate-400 mt-0.5 block">perturbations</span>
+        </div>
+    `;
+
+    // Line breakdown
+    let breakdown = '';
+    data.sort((a, b) => (b.pct || 0) - (a.pct || 0));
+    data.forEach(d => {
+        const pct = d.pct || 0;
+        const color = pct > 15 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
+        const barColor = pct > 15 ? 'bg-red-500' : pct > 5 ? 'bg-amber-400' : 'bg-emerald-500';
+        breakdown += `
+            <div class="flex items-center gap-2.5">
+                ${lineIcon(d.line_type, d.line_id, 'sm')}
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs">
+                        <span class="font-semibold capitalize">${d.line_type} ${d.line_id}</span>
+                        <span class="font-black ${color}">${pct}%</span>
+                    </div>
+                    <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1 mt-1">
+                        <div class="${barColor} h-1 rounded-full" style="width:${Math.min(pct,100)}%"></div>
+                    </div>
+                </div>
+            </div>`;
+    });
+    document.getElementById('line-breakdown').innerHTML = breakdown || '<p class="text-slate-400 text-sm">Pas de donnees</p>';
+}
+
+async function loadHeatmap() {
+    // Aggregate heatmap for all selected lines
+    const allData = {};
+    for (const l of myLines) {
+        const data = await fetch(`/api/heatmap?line_type=${l.type}&line_id=${l.id}`).then(r => r.json());
+        data.forEach(d => {
+            const key = `${d.dow}-${d.hour}`;
+            if (!allData[key]) allData[key] = { total: 0, count: 0 };
+            allData[key].total += d.pct;
+            allData[key].count += 1;
+        });
+    }
+
+    // Build heatmap grid
+    const hours = [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+    const days = [1,2,3,4,5,6,0]; // Mon-Sun
+    const dayLabels = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+
+    let html = '<table class="w-full text-[10px]"><thead><tr><th class="p-1"></th>';
+    hours.forEach(h => html += `<th class="p-1 font-semibold text-slate-400">${h}h</th>`);
+    html += '</tr></thead><tbody>';
+
+    days.forEach((dow, di) => {
+        html += `<tr><td class="p-1 font-semibold text-slate-400 text-right pr-2">${dayLabels[di]}</td>`;
+        hours.forEach(h => {
+            const key = `${dow}-${h}`;
+            const d = allData[key];
+            const pct = d ? (d.total / d.count) : 0;
+            const bg = pct > 20 ? 'bg-red-500' : pct > 10 ? 'bg-orange-400' : pct > 5 ? 'bg-amber-300' : pct > 2 ? 'bg-emerald-300' : pct > 0 ? 'bg-emerald-500' : 'bg-slate-100 dark:bg-slate-800';
+            const textColor = pct > 10 ? 'text-white' : pct > 2 ? 'text-slate-800' : 'text-slate-300 dark:text-slate-600';
+            html += `<td class="p-0.5"><div class="${bg} ${textColor} rounded text-center py-1.5 font-bold text-[9px]" title="${dayLabels[di]} ${h}h: ${pct.toFixed(1)}%">${pct > 0 ? pct.toFixed(0) : ''}</div></td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    // Legend
+    html += `<div class="flex items-center gap-3 mt-3 text-[10px] text-slate-400">
+        <span>Legende :</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-500"></span>0-2%</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-emerald-300"></span>2-5%</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-300"></span>5-10%</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-orange-400"></span>10-20%</span>
+        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-500"></span>20%+</span>
+    </div>`;
+
+    document.getElementById('heatmap').innerHTML = html;
+}
+
+async function loadPredictions() {
+    allPredictions = [];
+    for (const l of myLines) {
+        const data = await fetch(`/api/predict?line_type=${l.type}&line_id=${l.id}`).then(r => r.json());
+        allPredictions.push({ line: l, data });
+    }
+
+    const now = new Date();
+    const curDow = now.getDay();
+    const curHour = now.getHours();
+
+    // Current prediction
+    const nowPct = getPrediction(curDow, curHour);
+    const nowColor = nowPct > 15 ? 'text-red-500' : nowPct > 5 ? 'text-amber-500' : 'text-emerald-500';
+    document.getElementById('predict-now').innerHTML = `<span class="${nowColor}">${nowPct}%</span> <span class="text-sm font-semibold text-slate-400">de risque</span>`;
+
+    // Tomorrow morning
+    const tmrDow = (curDow + 1) % 7;
+    const tmrPct = getPrediction(tmrDow, 8);
+    const tmrColor = tmrPct > 15 ? 'text-red-500' : tmrPct > 5 ? 'text-amber-500' : 'text-emerald-500';
+    document.getElementById('predict-tomorrow').innerHTML = `<span class="${tmrColor}">${tmrPct}%</span> <span class="text-sm font-semibold text-slate-400">de risque</span>`;
+
+    // Week preview
+    let weekHtml = '<h3 class="text-xs font-bold text-slate-500 mb-2">Semaine a venir (8h du matin)</h3><div class="grid grid-cols-7 gap-2">';
+    for (let i = 0; i < 7; i++) {
+        const d = (curDow + i) % 7;
+        const p = getPrediction(d, 8);
+        const c = p > 15 ? 'bg-red-100 dark:bg-red-900/40 text-red-500' : p > 5 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-500' : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-500';
+        weekHtml += `<div class="text-center p-2 rounded-xl ${c}">
+            <div class="text-[10px] font-semibold text-slate-500">${DOW_FULL[d].slice(0,3)}</div>
+            <div class="text-lg font-black">${p}%</div>
+        </div>`;
+    }
+    weekHtml += '</div>';
+    document.getElementById('predict-week').innerHTML = weekHtml;
+}
+
+function getPrediction(dow, hour) {
+    let totalPct = 0, count = 0;
+    allPredictions.forEach(p => {
+        const match = p.data.find(d => d.dow === dow && d.hour === hour);
+        if (match && match.samples >= 3) {
+            totalPct += match.pct;
+            count++;
+        }
+    });
+    return count > 0 ? Math.round(totalPct / count * 10) / 10 : 0;
+}
+
+async function loadDelay() {
+    const linesParam = myLines.map(l => `${l.type}-${l.id}`).join(',');
+    const data = await fetch(`/api/multi-stats?lines=${linesParam}`).then(r => r.json());
+
+    let totalChecks = 0, totalDisrupted = 0;
+    data.forEach(d => { totalChecks += d.total; totalDisrupted += d.disrupted; });
+
+    // Estimate: each disruption = ~10 min delay, 2 trips/day
+    const scrapes = totalChecks / Math.max(myLines.length, 1);
+    const daysTracked = scrapes / (12 * 18); // ~12 scrapes/hour * 18 hours
+    const disruptionRate = totalChecks > 0 ? totalDisrupted / totalChecks : 0;
+
+    const tripsPerDay = 2;
+    const delayPerIncident = 10; // minutes
+    const dailyDelay = disruptionRate * tripsPerDay * delayPerIncident;
+    const weeklyDelay = dailyDelay * 5;
+    const yearlyDelay = dailyDelay * 250; // working days
+
+    document.getElementById('delay-calc').innerHTML = `
+        <div class="card !p-4 text-center">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase block">Par jour</span>
+            <span class="text-2xl font-black mt-1 block">${dailyDelay.toFixed(0)} min</span>
+        </div>
+        <div class="card !p-4 text-center">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase block">Par semaine</span>
+            <span class="text-2xl font-black mt-1 block">${weeklyDelay.toFixed(0)} min</span>
+        </div>
+        <div class="card !p-4 text-center">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase block">Par an</span>
+            <span class="text-2xl font-black mt-1 block ${yearlyDelay > 500 ? 'text-red-500' : ''}">${(yearlyDelay / 60).toFixed(0)}h</span>
+            <span class="text-[10px] text-slate-400 block">${(yearlyDelay / 60 / 24).toFixed(1)} jours</span>
+        </div>
+    `;
+}
+
+render();
+</script>
+{% endblock %}

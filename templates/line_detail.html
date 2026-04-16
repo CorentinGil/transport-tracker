@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}{{ line_type|upper }} {{ line_id }} - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<div class="flex items-center gap-3 mb-5">
+    <img src="/static/icons/{{ line_type }}-{{ line_id }}.svg" alt="{{ line_type }} {{ line_id }}" width="42" height="42" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+    <span class="line-badge line-badge-lg {{ 'badge-rer' if line_type == 'rer' else 'badge-tram' if line_type == 'tram' else '' }} line-{{ line_type }}-{{ line_id }}" style="display:none">{{ line_id }}</span>
+    <div>
+        <h1 class="text-xl font-black capitalize">{{ line_type }} {{ line_id }}</h1>
+        <p id="line-current-status" class="text-sm text-slate-400">Chargement...</p>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="flex flex-wrap items-center gap-2 mb-5">
+    <div id="year-tabs" class="flex flex-wrap gap-1"></div>
+    <div class="flex items-center gap-2 ml-2">
+        <input type="date" id="filter-date" class="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30" onchange="setDateFilter(this.value)">
+        <button onclick="clearDateFilter()" class="text-[10px] text-slate-400 hover:text-slate-600 transition">Effacer</button>
+    </div>
+</div>
+
+<!-- Stats -->
+<div id="line-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+
+<!-- Causes + Charts -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+        <h2 class="text-base font-bold mb-1">Causes des perturbations</h2>
+        <p class="text-[11px] text-slate-400 mb-3">Hors travaux planifies</p>
+        <div class="flex items-center gap-4">
+            <div class="w-32 h-32 shrink-0">
+                <canvas id="chart-causes"></canvas>
+            </div>
+            <div id="causes-list" class="flex-1 space-y-1.5 overflow-y-auto max-h-[160px] pr-1"></div>
+        </div>
+    </div>
+    <div class="card">
+        <h2 class="text-base font-bold mb-3">Par heure</h2>
+        <canvas id="chart-hours" height="200"></canvas>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+    <div class="card">
+        <h2 class="text-base font-bold mb-3">Par jour</h2>
+        <canvas id="chart-dow" height="200"></canvas>
+    </div>
+    <div class="card">
+        <h2 class="text-base font-bold mb-3">Evolution</h2>
+        <canvas id="chart-timeline" height="200"></canvas>
+    </div>
+</div>
+
+<!-- History -->
+<div class="card">
+    <h2 class="text-base font-bold mb-3">Historique des incidents</h2>
+    <div id="history-list" class="space-y-0.5 max-h-[500px] overflow-y-auto pr-1"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LT = '{{ line_type }}', LI = '{{ line_id }}';
+let selectedYear = 'all';
+let filterDate = null;
+let chartHours, chartDow, chartTimeline, chartCauses;
+
+const CAUSE_LABELS = {
+    'perturbation':'Incident','travaux':'Travaux','greve':'Greve',
+    'manifestation/evenement':'Manifestation','bagage/colis suspect':'Bagage/Colis',
+    'accident voyageur':'Accident voyageur','panne signalisation':'Panne signal',
+    'panne materiel':'Panne materiel','panne de portes':'Panne portes',
+    'signal d\'alarme':'Signal alarme','acte de malveillance':'Malveillance',
+    'affluence':'Affluence','ralentissement':'Ralentissement',
+    'mesures de securite':'Securite','trafic interrompu':'Interruption',
+    'suppressions de trains':'Suppressions','information':'Information','autre':'Autre','':'Non precise',
+};
+const CAUSE_COLORS = ['#ef4444','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16','#06b6d4'];
+
+function buildQuery() {
+    const p = new URLSearchParams();
+    if (filterDate) {
+        p.set('start', filterDate);
+        p.set('end', filterDate + 'T23:59:59');
+    } else if (selectedYear !== 'all') {
+        p.set('start', `${selectedYear}-01-01`);
+        p.set('end', `${selectedYear}-12-31T23:59:59`);
+    }
+    p.set('line_type', LT); p.set('line_id', LI);
+    return p.toString();
+}
+
+function setDateFilter(d) {
+    filterDate = d || null;
+    selectedYear = 'all';
+    document.querySelectorAll('[data-year]').forEach(b => b.classList.remove('active'));
+    loadAll();
+}
+
+function clearDateFilter() {
+    filterDate = null;
+    document.getElementById('filter-date').value = '';
+    setYear('all');
+}
+
+async function loadYearTabs() {
+    const years = await fetch('/api/years').then(r => r.json());
+    const tabs = [{ key:'all', label:'Tout' }, ...years.map(y => ({key:y, label:y}))];
+    document.getElementById('year-tabs').innerHTML = tabs.map(t =>
+        `<button onclick="setYear('${t.key}')" class="tab-pill ${t.key===selectedYear && !filterDate ?'active':''}" data-year="${t.key}">${t.label}</button>`
+    ).join('');
+}
+
+function setYear(y) {
+    selectedYear = y;
+    filterDate = null;
+    document.getElementById('filter-date').value = '';
+    document.querySelectorAll('[data-year]').forEach(b => b.classList.toggle('active', b.dataset.year === y));
+    loadAll();
+}
+
+async function loadAll() {
+    await Promise.all([loadStatus(), loadStats(), loadCauses(), loadByHour(), loadByDow(), loadTimeline(), loadHistory()]);
+}
+
+async function loadStatus() {
+    const data = await fetch('/api/current').then(r => r.json());
+    const l = data.find(d => d.line_type === LT && d.line_id === LI);
+    if (!l) return;
+    const dot = l.status === 'normal' ? 'bg-emerald-500' : l.status === 'alerte' ? 'bg-red-500' : 'bg-amber-500';
+    let html = `<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ${dot}"></span><span class="font-semibold">${statusLabel(l.status)}</span></span>`;
+    if (l.status !== 'normal' && l.title) html += ` <span class="text-slate-400">-- ${l.title}</span>`;
+    document.getElementById('line-current-status').innerHTML = html;
+}
+
+async function loadStats() {
+    const ranking = await fetch(`/api/ranking?${buildQuery()}`).then(r => r.json());
+    const d = ranking.find(r => r.line_type === LT && r.line_id === LI) || {};
+    const pct = d.disruption_pct || 0;
+    const pctColor = pct > 15 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
+
+    const period = filterDate ? `le ${filterDate}` : selectedYear !== 'all' ? `en ${selectedYear}` : 'depuis le debut';
+
+    document.getElementById('line-stats').innerHTML = `
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Collectes</span>
+            <span class="text-2xl font-black mt-1 block">${(d.total_checks||0).toLocaleString('fr')}</span>
+            <span class="text-[10px] text-slate-400">${period}</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Incidents</span>
+            <span class="text-2xl font-black mt-1 block text-red-500">${(d.disrupted_checks||0).toLocaleString('fr')}</span>
+            <span class="text-[10px] text-slate-400">hors travaux</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Temps perturbe</span>
+            <span class="text-2xl font-black mt-1 block ${pctColor}">${pct}%</span>
+            <span class="text-[10px] text-slate-400">du temps surveille</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Statut actuel</span>
+            <span class="text-lg font-bold mt-1 block" id="mini-status">--</span>
+        </div>
+    `;
+}
+
+async function loadCauses() {
+    const allData = await fetch(`/api/causes?${buildQuery()}`).then(r => r.json());
+    const data = allData.filter(d => d.cause !== 'travaux');
+
+    if (!data.length) {
+        document.getElementById('causes-list').innerHTML = '<p class="text-slate-400 text-[11px]">Pas de donnees</p>';
+        if (chartCauses) chartCauses.destroy();
+        return;
+    }
+
+    const total = data.reduce((s, d) => s + d.count, 0);
+
+    if (chartCauses) chartCauses.destroy();
+    chartCauses = new Chart(document.getElementById('chart-causes'), {
+        type: 'doughnut',
+        data: {
+            labels: data.slice(0, 8).map(d => CAUSE_LABELS[d.cause] || d.cause || 'Autre'),
+            datasets: [{ data: data.slice(0, 8).map(d => d.count), backgroundColor: CAUSE_COLORS, borderWidth: 0 }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', cornerRadius: 8 } }, cutout: '65%' }
+    });
+
+    let html = '';
+    data.forEach((d, i) => {
+        const pct = total > 0 ? (100 * d.count / total).toFixed(1) : 0;
+        const color = CAUSE_COLORS[i] || '#6B7280';
+        html += `<div class="flex items-center gap-2 py-0.5">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background:${color}"></span>
+            <span class="text-[11px] font-semibold flex-1 truncate">${CAUSE_LABELS[d.cause] || d.cause || 'Autre'}</span>
+            <span class="text-[11px] font-black tabular-nums">${pct}%</span>
+        </div>`;
+    });
+    document.getElementById('causes-list').innerHTML = html;
+}
+
+function chartOpts() {
+    return { responsive:true, plugins:{legend:{display:false}, tooltip:{backgroundColor:'rgba(15,23,42,0.9)',cornerRadius:8,callbacks:{label:c=>`${c.parsed.y}%`}}}, scales:{y:{beginAtZero:true,ticks:{callback:v=>v+'%',font:{size:10}},grid:{drawBorder:false}},x:{grid:{display:false},ticks:{font:{size:10}}}} };
+}
+
+async function loadByHour() {
+    const data = await fetch(`/api/by-hour?${buildQuery()}`).then(r => r.json());
+    if (chartHours) chartHours.destroy();
+    chartHours = new Chart(document.getElementById('chart-hours'), {
+        type:'bar', data:{ labels:data.map(d=>`${d.hour}h`), datasets:[{data:data.map(d=>d.pct), backgroundColor:data.map(d=> d.pct>15?'#ef4444':d.pct>5?'#f59e0b':'#10b981'), borderRadius:6, borderSkipped:false}] }, options:chartOpts()
+    });
+}
+
+async function loadByDow() {
+    const data = await fetch(`/api/by-dow?${buildQuery()}`).then(r => r.json());
+    const re = []; for(let i=1;i<=6;i++) re.push(data.find(d=>d.dow===i)||{dow:i,pct:0}); re.push(data.find(d=>d.dow===0)||{dow:0,pct:0});
+    if (chartDow) chartDow.destroy();
+    chartDow = new Chart(document.getElementById('chart-dow'), {
+        type:'bar', data:{ labels:re.map(d=>DOW_LABELS[d.dow]), datasets:[{data:re.map(d=>d.pct), backgroundColor:re.map(d=> d.pct>15?'#ef4444':d.pct>5?'#f59e0b':'#10b981'), borderRadius:6, borderSkipped:false}] }, options:chartOpts()
+    });
+}
+
+async function loadTimeline() {
+    const data = await fetch(`/api/by-date?${buildQuery()}`).then(r => r.json());
+    if (chartTimeline) chartTimeline.destroy();
+    chartTimeline = new Chart(document.getElementById('chart-timeline'), {
+        type:'line', data:{ labels:data.map(d=>d.date), datasets:[{data:data.map(d=>d.pct), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.08)', fill:true, tension:0.4, pointRadius:data.length>60?0:3, borderWidth:2}] },
+        options:{...chartOpts(), scales:{...chartOpts().scales, x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:10}}}}}
+    });
+}
+
+async function loadHistory() {
+    const data = await fetch(`/api/line-history/${LT}/${LI}?${buildQuery()}`).then(r => r.json());
+    if (!data.length) { document.getElementById('history-list').innerHTML = '<p class="text-slate-400 text-sm">Aucun historique</p>'; return; }
+
+    let html = '', prev = null;
+    for (const e of data) {
+        if (e.status === prev) continue;
+        prev = e.status;
+        const dot = e.status === 'normal' ? 'bg-emerald-500' : e.status === 'alerte' ? 'bg-red-500' : 'bg-amber-500';
+        const time = new Date(e.timestamp).toLocaleString('fr-FR');
+        const causeTag = e.cause && e.cause !== '' && e.status === 'alerte'
+            ? `<span class="inline-block px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950/30 text-red-500 text-[9px] font-bold ml-1">${CAUSE_LABELS[e.cause] || e.cause}</span>`
+            : e.status === 'normal_trav'
+            ? `<span class="inline-block px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/30 text-amber-500 text-[9px] font-bold ml-1">Travaux</span>`
+            : '';
+
+        html += `<div class="flex items-start gap-3 py-2 border-b border-slate-100 dark:border-slate-800/50">
+            <span class="text-[10px] text-slate-400 w-28 shrink-0 pt-0.5 tabular-nums">${time}</span>
+            <span class="w-2 h-2 rounded-full ${dot} mt-1.5 shrink-0"></span>
+            <div class="min-w-0">
+                <span class="text-xs font-semibold">${statusLabel(e.status)}</span>${causeTag}
+                ${e.title && e.status !== 'normal' ? `<p class="text-[10px] text-slate-400 mt-0.5 leading-tight">${e.title}</p>` : ''}
+            </div>
+        </div>`;
+    }
+    document.getElementById('history-list').innerHTML = html;
+}
+
+loadYearTabs();
+loadAll();
+</script>
+{% endblock %}

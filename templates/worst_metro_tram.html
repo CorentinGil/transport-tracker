@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Pires lignes Metro & Tram - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<div class="mb-5">
+    <h1 class="text-xl font-black">Pires lignes Metro & Tram</h1>
+    <p class="text-sm text-slate-400">Donnees Transport Tracker — taux de perturbation mensuel (hors travaux)</p>
+</div>
+
+<div class="flex gap-1 mb-5">
+    <button onclick="setFilter(null)" class="tab-pill active" data-lt="all">Tous</button>
+    <button onclick="setFilter('metro')" class="tab-pill" data-lt="metro">Metro</button>
+    <button onclick="setFilter('tram')" class="tab-pill" data-lt="tram">Tram</button>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-2">Lignes les moins ponctuelles</h2>
+    <p class="text-[11px] text-slate-400 mb-2">% moyen de temps en perturbation — du pire au meilleur</p>
+    <div id="year-tabs" class="flex flex-wrap gap-1 mb-2"></div>
+    <div id="month-tabs" class="flex flex-wrap gap-1 mb-3"></div>
+    <div id="ranking" class="space-y-1.5 max-h-[450px] overflow-y-auto pr-1"></div>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-1">Effet saisonnier</h2>
+    <p class="text-[11px] text-slate-400 mb-3">Perturbation moyenne par mois (tous les ans confondus)</p>
+    <div class="h-[300px]"><canvas id="chart-seasonal"></canvas></div>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-3">Evolution mensuelle</h2>
+    <div class="h-[350px]"><canvas id="chart-timeline"></canvas></div>
+</div>
+
+<div class="card">
+    <h2 class="text-base font-bold mb-3">Moyenne par annee</h2>
+    <div class="h-[300px]"><canvas id="chart-years"></canvas></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let lineType = null, rankingYear = null, rankingMonth = null;
+let chartSeasonal, chartTimeline, chartYears;
+
+const MT_COLORS = {
+    'metro-1':'#FFCD00','metro-2':'#003CA6','metro-3':'#837902','metro-3b':'#6EC4E8',
+    'metro-4':'#CF009E','metro-5':'#FF7E2E','metro-6':'#6ECA97','metro-7':'#FA9ABA',
+    'metro-7b':'#6ECA97','metro-8':'#E19BDF','metro-9':'#B6BD00','metro-10':'#C9910D',
+    'metro-11':'#704B1C','metro-12':'#007852','metro-13':'#6EC4E8','metro-14':'#62259D',
+    'tram-T1':'#003CA6','tram-T2':'#CF009E','tram-T3a':'#FF7E2E','tram-T3b':'#00A86B',
+    'tram-T4':'#E3051C','tram-T5':'#6B7280','tram-T6':'#E3051C','tram-T7':'#704B1C',
+    'tram-T8':'#837902','tram-T9':'#003CA6','tram-T10':'#C9910D','tram-T11':'#FF7E2E',
+    'tram-T12':'#007852','tram-T13':'#6EC4E8',
+};
+const MONTH_NAMES = ['Jan','Fev','Mar','Avr','Mai','Juin','Juil','Aout','Sep','Oct','Nov','Dec'];
+
+function keyOf(lt, lid) { return `${lt}-${lid}`; }
+function colorOf(lt, lid) { return MT_COLORS[keyOf(lt, lid)] || '#6B7280'; }
+function labelOf(lt, lid) { return `${lt === 'metro' ? 'M' : 'T'} ${lid}`; }
+
+function setFilter(t) {
+    lineType = t;
+    document.querySelectorAll('[data-lt]').forEach(b => {
+        b.classList.toggle('active', (t === null && b.dataset.lt === 'all') || b.dataset.lt === t);
+    });
+    loadAll();
+}
+
+function ltQ() { return lineType ? `line_type=${lineType}` : ''; }
+function rankQ() {
+    const p = new URLSearchParams();
+    if (lineType) p.set('line_type', lineType);
+    if (rankingYear) p.set('year', rankingYear);
+    if (rankingMonth) p.set('month', rankingMonth);
+    const q = p.toString();
+    return q ? `?${q}` : '';
+}
+
+async function loadYearTabs() {
+    const years = await fetch('/api/mt/years').then(r => r.json());
+    document.getElementById('year-tabs').innerHTML = [
+        { key: '', label: 'Toutes annees' },
+        ...years.map(y => ({ key: y, label: y })),
+    ].map(t => `<button onclick="setYear('${t.key}')" class="tab-pill ${t.key === (rankingYear || '') ? 'active' : ''}" data-sy="${t.key}">${t.label}</button>`).join('');
+}
+
+function setYear(y) {
+    rankingYear = y || null;
+    rankingMonth = null;
+    document.querySelectorAll('[data-sy]').forEach(b => b.classList.toggle('active', b.dataset.sy === (rankingYear || '')));
+    renderMonthTabs();
+    loadRanking();
+}
+
+function renderMonthTabs() {
+    const label = rankingYear ? "Toute l'annee" : 'Tous les mois';
+    document.getElementById('month-tabs').innerHTML = [
+        { key: '', label },
+        ...MONTH_NAMES.map((m, i) => ({ key: String(i + 1).padStart(2, '0'), label: m })),
+    ].map(t => `<button onclick="setMonth('${t.key}')" class="tab-pill ${t.key === (rankingMonth || '') ? 'active' : ''}" data-sm="${t.key}" style="font-size:11px;padding:3px 8px">${t.label}</button>`).join('');
+}
+
+function setMonth(m) {
+    rankingMonth = m || null;
+    document.querySelectorAll('[data-sm]').forEach(b => b.classList.toggle('active', b.dataset.sm === (rankingMonth || '')));
+    loadRanking();
+}
+
+async function loadAll() {
+    await Promise.all([loadYearTabs(), loadRanking(), loadSeasonal(), loadTimeline(), loadYears()]);
+    renderMonthTabs();
+}
+
+async function loadRanking() {
+    const data = await fetch(`/api/mt/ranking${rankQ()}`).then(r => r.json());
+    if (!data.length) {
+        document.getElementById('ranking').innerHTML = '<p class="text-slate-400 text-sm">Pas encore assez de donnees. La collecte est en cours.</p>';
+        return;
+    }
+    let sub = '';
+    if (rankingYear && rankingMonth) sub = `${MONTH_NAMES[parseInt(rankingMonth) - 1]} ${rankingYear}`;
+    else if (rankingYear) sub = `Annee ${rankingYear}`;
+    else if (rankingMonth) sub = `Tous les mois de ${MONTH_NAMES[parseInt(rankingMonth) - 1]}`;
+
+    let html = sub ? `<div class="text-[11px] text-blue-400 font-semibold mb-2">${sub}</div>` : '';
+    data.forEach((d, i) => {
+        const pct = d.avg_pct || 0;
+        const color = pct > 15 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
+        const bar = pct > 15 ? 'bg-red-500' : pct > 5 ? 'bg-amber-400' : 'bg-emerald-500';
+        html += `
+            <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-2.5 py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
+                <span class="text-[11px] font-black w-5 text-right text-slate-400">${i + 1}</span>
+                ${lineIcon(d.line_type, d.line_id, 'sm')}
+                <div class="flex-1">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold capitalize">${d.line_type} ${d.line_id}</span>
+                        <div class="text-right">
+                            <span class="text-xs font-black tabular-nums ${color}">${pct}%</span>
+                            <span class="text-[9px] text-slate-400 ml-1">(${d.months} mois)</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <div class="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1">
+                            <div class="${bar} h-1 rounded-full" style="width:${Math.min(pct, 100)}%"></div>
+                        </div>
+                        <span class="text-[9px] text-slate-400 tabular-nums w-20 text-right">min ${d.min_pct}% / max ${d.max_pct}%</span>
+                    </div>
+                </div>
+            </a>`;
+    });
+    document.getElementById('ranking').innerHTML = html;
+}
+
+async function loadSeasonal() {
+    const q = ltQ() ? `?${ltQ()}` : '';
+    const data = await fetch(`/api/mt/seasonal${q}`).then(r => r.json());
+    if (!data.length) { if (chartSeasonal) chartSeasonal.destroy(); return; }
+    const lm = {};
+    data.forEach(d => {
+        const k = keyOf(d.line_type, d.line_id);
+        if (!lm[k]) lm[k] = { lt: d.line_type, lid: d.line_id, values: {} };
+        lm[k].values[d.month_num] = d.avg_pct;
+    });
+    const ds = Object.entries(lm).map(([k, info]) => ({
+        label: labelOf(info.lt, info.lid),
+        data: Array.from({ length: 12 }, (_, i) => info.values[i + 1] ?? null),
+        borderColor: colorOf(info.lt, info.lid),
+        borderWidth: 2, pointRadius: 3, tension: 0.3,
+    }));
+    if (chartSeasonal) chartSeasonal.destroy();
+    chartSeasonal = new Chart(document.getElementById('chart-seasonal'), {
+        type: 'line',
+        data: { labels: MONTH_NAMES, datasets: ds },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(15,23,42,0.9)', cornerRadius: 8, callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } },
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { drawBorder: false } },
+                x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+            },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        },
+    });
+}
+
+async function loadTimeline() {
+    const lines = await fetch('/api/mt/lines').then(r => r.json());
+    const f = lineType ? lines.filter(l => l.line_type === lineType) : lines;
+    const ds = [];
+    for (const l of f) {
+        const h = await fetch(`/api/mt/history/${l.line_type}/${l.line_id}`).then(r => r.json());
+        if (!h.length) continue;
+        ds.push({
+            label: labelOf(l.line_type, l.line_id),
+            data: h.map(x => ({ x: x.date, y: x.disruption_pct })),
+            borderColor: colorOf(l.line_type, l.line_id),
+            borderWidth: 1.5, pointRadius: 2, tension: 0.3,
+        });
+    }
+    if (chartTimeline) chartTimeline.destroy();
+    chartTimeline = new Chart(document.getElementById('chart-timeline'), {
+        type: 'line',
+        data: { datasets: ds },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(15,23,42,0.9)', cornerRadius: 8, callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } },
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { drawBorder: false } },
+                x: { type: 'category', ticks: { maxTicksLimit: 15, font: { size: 9 } }, grid: { display: false } },
+            },
+            interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        },
+    });
+}
+
+async function loadYears() {
+    const q = ltQ() ? `?${ltQ()}` : '';
+    const data = await fetch(`/api/mt/by-year${q}`).then(r => r.json());
+    if (!data.length) { if (chartYears) chartYears.destroy(); return; }
+    const lm = {};
+    const years = [...new Set(data.map(d => d.year))].sort();
+    data.forEach(d => {
+        const k = keyOf(d.line_type, d.line_id);
+        if (!lm[k]) lm[k] = { lt: d.line_type, lid: d.line_id, values: {} };
+        lm[k].values[d.year] = d.avg_pct;
+    });
+    const ds = Object.entries(lm).map(([k, info]) => ({
+        label: labelOf(info.lt, info.lid),
+        data: years.map(y => info.values[y] ?? null),
+        backgroundColor: colorOf(info.lt, info.lid),
+        borderRadius: 4, borderSkipped: false,
+    }));
+    if (chartYears) chartYears.destroy();
+    chartYears = new Chart(document.getElementById('chart-years'), {
+        type: 'bar',
+        data: { labels: years, datasets: ds },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', cornerRadius: 8, callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` } },
+            },
+            scales: {
+                y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { drawBorder: false } },
+                x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+            },
+        },
+    });
+}
+
+loadAll();
+</script>
+{% endblock %}

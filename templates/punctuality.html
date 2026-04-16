@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Pires lignes RER & Transilien - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<div class="flex items-center justify-between mb-5">
+    <div>
+        <h1 class="text-xl font-black">Pires lignes RER & Transilien</h1>
+        <p class="text-sm text-slate-400">Donnees SNCF Open Data — ponctualite mensuelle 2013-2026</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a href="https://data.sncf.com/explore/dataset/ponctualite-mensuelle-transilien/table/?sort=date" target="_blank" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-[11px] font-semibold text-slate-500 transition">
+            <svg class="w-3 h-3 inline -mt-0.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            Source
+        </a>
+        <button onclick="syncData(this)" class="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-[11px] font-bold hover:opacity-90 transition">Mettre a jour</button>
+    </div>
+</div>
+
+<div class="flex gap-1 mb-5">
+    <button onclick="setFilter(null)" class="tab-pill active" data-svc="all">Tous</button>
+    <button onclick="setFilter('RER')" class="tab-pill" data-svc="RER">RER</button>
+    <button onclick="setFilter('Transilien')" class="tab-pill" data-svc="Transilien">Transilien</button>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-2">Lignes les moins ponctuelles</h2>
+    <p class="text-[11px] text-slate-400 mb-2">% moyen de trains a l'heure — du pire au meilleur</p>
+    <div id="year-tabs" class="flex flex-wrap gap-1 mb-2"></div>
+    <div id="month-tabs" class="flex flex-wrap gap-1 mb-3"></div>
+    <div id="ranking" class="space-y-1.5 max-h-[450px] overflow-y-auto pr-1"></div>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-1">Effet saisonnier</h2>
+    <p class="text-[11px] text-slate-400 mb-3">Ponctualite moyenne par mois (tous les ans confondus)</p>
+    <div class="h-[300px]"><canvas id="chart-seasonal"></canvas></div>
+</div>
+
+<div class="card mb-5">
+    <h2 class="text-base font-bold mb-3">Evolution mensuelle</h2>
+    <div class="h-[350px]"><canvas id="chart-timeline"></canvas></div>
+</div>
+
+<div class="card">
+    <h2 class="text-base font-bold mb-3">Moyenne par annee</h2>
+    <div class="h-[300px]"><canvas id="chart-years"></canvas></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentService = null, rankingYear = null, rankingMonth = null;
+let chartSeasonal, chartTimeline, chartYears;
+const LINE_COLORS = {'A':'#E3051C','B':'#5291CE','C':'#FFCD00','D':'#00A86B','E':'#BD76A1','H':'#704B1C','J':'#B6BD00','K':'#6ECA97','L':'#CF009E','N':'#00A86B','P':'#FF7E2E','R':'#003CA6','U':'#837902'};
+const MONTH_NAMES = ['Jan','Fev','Mar','Avr','Mai','Juin','Juil','Aout','Sep','Oct','Nov','Dec'];
+
+function setFilter(svc) { currentService = svc; document.querySelectorAll('[data-svc]').forEach(b => { b.classList.toggle('active', (svc===null&&b.dataset.svc==='all')||b.dataset.svc===svc); }); loadAll(); }
+function svcQ() { return currentService ? `?service=${currentService}` : ''; }
+function rankQ() { const p=new URLSearchParams(); if(currentService)p.set('service',currentService); if(rankingYear)p.set('year',rankingYear); if(rankingMonth)p.set('month',rankingMonth); const q=p.toString(); return q?`?${q}`:''; }
+
+async function loadYearTabs() { const years=await fetch('/api/sncf/years').then(r=>r.json()); document.getElementById('year-tabs').innerHTML=[{key:'',label:'Depuis 2013'},...years.map(y=>({key:y,label:y}))].map(t=>`<button onclick="setYear('${t.key}')" class="tab-pill ${t.key===(rankingYear||'')?'active':''}" data-sy="${t.key}">${t.label}</button>`).join(''); }
+function setYear(y) { rankingYear=y||null; rankingMonth=null; document.querySelectorAll('[data-sy]').forEach(b=>b.classList.toggle('active',b.dataset.sy===(rankingYear||''))); renderMonthTabs(); loadRanking(); }
+function renderMonthTabs() { const label=rankingYear?"Toute l'annee":'Tous les mois'; document.getElementById('month-tabs').innerHTML=[{key:'',label},...MONTH_NAMES.map((m,i)=>({key:String(i+1).padStart(2,'0'),label:m}))].map(t=>`<button onclick="setMonth('${t.key}')" class="tab-pill ${t.key===(rankingMonth||'')?'active':''}" data-sm="${t.key}" style="font-size:11px;padding:3px 8px">${t.label}</button>`).join(''); }
+function setMonth(m) { rankingMonth=m||null; document.querySelectorAll('[data-sm]').forEach(b=>b.classList.toggle('active',b.dataset.sm===(rankingMonth||''))); loadRanking(); }
+
+async function loadAll() { await Promise.all([loadYearTabs(),loadRanking(),loadSeasonal(),loadTimeline(),loadYears()]); renderMonthTabs(); }
+
+async function loadRanking() {
+    const data=await fetch(`/api/sncf/ranking${rankQ()}`).then(r=>r.json());
+    if(!data.length){document.getElementById('ranking').innerHTML='<p class="text-slate-400 text-sm">Aucune donnee</p>';return;}
+    let sub=''; if(rankingYear&&rankingMonth)sub=`${MONTH_NAMES[parseInt(rankingMonth)-1]} ${rankingYear}`; else if(rankingYear)sub=`Annee ${rankingYear}`; else if(rankingMonth)sub=`Tous les mois de ${MONTH_NAMES[parseInt(rankingMonth)-1]}`;
+    let html=sub?`<div class="text-[11px] text-blue-400 font-semibold mb-2">${sub}</div>`:'';
+    data.forEach((d,i)=>{const pct=d.avg_pct||0;const color=pct<85?'text-red-500':pct<90?'text-amber-500':'text-emerald-500';const bar=pct<85?'bg-red-500':pct<90?'bg-amber-400':'bg-emerald-500';const bg=LINE_COLORS[d.line]||'#6B7280';
+    html+=`<div class="flex items-center gap-2.5 py-1.5 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"><span class="text-[11px] font-black w-5 text-right text-slate-400">${i+1}</span><span class="inline-flex items-center justify-center w-7 h-7 rounded-md text-[10px] font-black text-white" style="background:${bg}">${d.line}</span><div class="flex-1"><div class="flex items-center justify-between"><span class="text-xs font-semibold">${d.line_name||d.service+' '+d.line}</span><div class="text-right"><span class="text-xs font-black tabular-nums ${color}">${pct}%</span><span class="text-[9px] text-slate-400 ml-1">(${d.months} mois)</span></div></div><div class="flex items-center gap-2 mt-1"><div class="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1"><div class="${bar} h-1 rounded-full" style="width:${pct}%"></div></div><span class="text-[9px] text-slate-400 tabular-nums w-20 text-right">min ${d.min_pct}% / max ${d.max_pct}%</span></div></div></div>`;});
+    document.getElementById('ranking').innerHTML=html;
+}
+
+async function loadSeasonal() { const data=await fetch(`/api/sncf/seasonal${svcQ()}`).then(r=>r.json()); if(!data.length)return; const lm={}; data.forEach(d=>{if(!lm[d.line])lm[d.line]={};lm[d.line][d.month_num]=d.avg_pct;}); const ds=Object.entries(lm).map(([l,md])=>({label:l,data:Array.from({length:12},(_,i)=>md[i+1]||null),borderColor:LINE_COLORS[l]||'#6B7280',borderWidth:2,pointRadius:3,tension:0.3})); if(chartSeasonal)chartSeasonal.destroy(); chartSeasonal=new Chart(document.getElementById('chart-seasonal'),{type:'line',data:{labels:MONTH_NAMES,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},tooltip:{mode:'index',intersect:false,backgroundColor:'rgba(15,23,42,0.9)',cornerRadius:8,callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}%`}}},scales:{y:{min:75,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{drawBorder:false}},x:{grid:{display:false},ticks:{font:{size:10}}}},interaction:{mode:'nearest',axis:'x',intersect:false}}}); }
+
+async function loadTimeline() { const lines=await fetch('/api/sncf/lines').then(r=>r.json()); const f=currentService?lines.filter(l=>l.service===currentService):lines; const ds=[]; for(const l of f){const h=await fetch(`/api/sncf/history/${l.line}?service=${l.service}`).then(r=>r.json());ds.push({label:`${l.service} ${l.line}`,data:h.map(x=>({x:x.date,y:x.punctuality_pct})),borderColor:LINE_COLORS[l.line]||'#6B7280',borderWidth:1.5,pointRadius:0,tension:0.3});} if(chartTimeline)chartTimeline.destroy(); chartTimeline=new Chart(document.getElementById('chart-timeline'),{type:'line',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},tooltip:{mode:'index',intersect:false,backgroundColor:'rgba(15,23,42,0.9)',cornerRadius:8,callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}%`}}},scales:{y:{min:60,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{drawBorder:false}},x:{type:'category',ticks:{maxTicksLimit:15,font:{size:9}},grid:{display:false}}},interaction:{mode:'nearest',axis:'x',intersect:false}}}); }
+
+async function loadYears() { const data=await fetch(`/api/sncf/by-year${svcQ()}`).then(r=>r.json()); if(!data.length)return; const lm={},years=[...new Set(data.map(d=>d.year))].sort(); data.forEach(d=>{if(!lm[d.line])lm[d.line]={};lm[d.line][d.year]=d.avg_pct;}); const ds=Object.entries(lm).map(([l,yd])=>({label:l,data:years.map(y=>yd[y]||null),backgroundColor:LINE_COLORS[l]||'#6B7280',borderRadius:4,borderSkipped:false})); if(chartYears)chartYears.destroy(); chartYears=new Chart(document.getElementById('chart-years'),{type:'bar',data:{labels:years,datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},tooltip:{backgroundColor:'rgba(15,23,42,0.9)',cornerRadius:8,callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}%`}}},scales:{y:{min:70,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{drawBorder:false}},x:{grid:{display:false},ticks:{font:{size:10}}}}}}); }
+
+async function syncData(btn){btn.disabled=true;btn.textContent='Syncing...';await fetch('/api/sncf/sync',{method:'POST'});btn.textContent='Mettre a jour';btn.disabled=false;loadAll();}
+loadAll();
+</script>
+{% endblock %}
