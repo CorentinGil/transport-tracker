@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Admin - Transport Tracker{% endblock %}
+
+{% block content %}
+<a href="/" class="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition mb-4">
+    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+    Retour
+</a>
+
+<div class="flex items-center justify-between mb-5">
+    <div>
+        <h1 class="text-xl font-black">Admin — Health Check</h1>
+        <p class="text-sm text-slate-500">Etat de la collecte en temps reel</p>
+    </div>
+    <button onclick="loadHealth()" class="tab-pill active">Rafraichir</button>
+</div>
+
+<!-- Status badge -->
+<div id="status-badge" class="mb-5"></div>
+
+<!-- KPIs -->
+<div id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+<!-- Coverage chart -->
+<div class="card mb-5">
+    <h2 class="text-base font-bold flex items-center gap-2 mb-4">
+        <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        </span>
+        Couverture 7 derniers jours
+    </h2>
+    <div id="coverage" class="space-y-3"></div>
+</div>
+
+<!-- Gaps -->
+<div class="card mb-5" id="gaps-card">
+    <h2 class="text-base font-bold flex items-center gap-2 mb-4">
+        <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        </span>
+        Coupures detectees
+    </h2>
+    <div id="gaps-list" class="space-y-2"></div>
+</div>
+
+<!-- Current alerts -->
+<div class="card" id="alerts-card">
+    <h2 class="text-base font-bold flex items-center gap-2 mb-4">
+        <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </span>
+        Etat du reseau maintenant
+    </h2>
+    <div id="network-state" class="space-y-2"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadHealth() {
+    const d = await fetch('/api/health').then(r => r.json());
+
+    // Status badge
+    const colors = { ok: ['emerald', 'Tout fonctionne'], warning: ['amber', 'Coupures detectees'], critical: ['red', 'Scraper arrete'] };
+    const [c, label] = colors[d.status] || colors.warning;
+    document.getElementById('status-badge').innerHTML = `
+        <div class="flex items-center gap-3 px-5 py-4 rounded-2xl bg-${c}-500/10 ring-1 ring-${c}-400/20">
+            <span class="pulse-dot bg-${c}-400"></span>
+            <span class="text-lg font-black text-${c}-400">${label}</span>
+            <span class="text-sm text-slate-500 ml-auto">Dernier releve il y a ${d.last_scrape_age_min} min</span>
+        </div>`;
+
+    // KPIs
+    document.getElementById('kpis').innerHTML = `
+        <div class="card card-glow !p-4 text-center">
+            <span class="text-3xl font-black tabular-nums text-white">${d.total_records.toLocaleString('fr')}</span>
+            <span class="text-[11px] text-slate-500 block mt-1">releves totaux</span>
+        </div>
+        <div class="card !p-4 text-center">
+            <span class="text-3xl font-black tabular-nums text-indigo-400">${d.lines_count}</span>
+            <span class="text-[11px] text-slate-500 block mt-1">lignes suivies</span>
+        </div>
+        <div class="card !p-4 text-center">
+            <span class="text-3xl font-black tabular-nums ${d.scraper_ok ? 'text-emerald-400' : 'text-red-400'}">${d.scraper_ok ? 'Actif' : 'Arrete'}</span>
+            <span class="text-[11px] text-slate-500 block mt-1">scraper</span>
+        </div>
+        <div class="card !p-4 text-center">
+            <span class="text-3xl font-black tabular-nums text-amber-400">${d.gaps.length}</span>
+            <span class="text-[11px] text-slate-500 block mt-1">coupures</span>
+        </div>`;
+
+    // Coverage bars
+    let covHtml = '';
+    d.days.forEach(day => {
+        const pct = Math.min(100, 100 * day.n / d.expected_per_day);
+        const col = pct > 95 ? 'bg-emerald-400' : pct > 70 ? 'bg-amber-400' : 'bg-red-400';
+        const today = day.d === new Date().toISOString().slice(0, 10);
+        covHtml += `
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-semibold text-slate-400 w-20 shrink-0 tabular-nums">${day.d.slice(5)}${today ? ' <span class="text-indigo-400">(auj)</span>' : ''}</span>
+                <div class="flex-1 h-4 rounded-full bg-white/[0.04] overflow-hidden">
+                    <div class="${col} h-full rounded-full transition-all" style="width:${pct}%"></div>
+                </div>
+                <span class="text-xs font-black tabular-nums w-12 text-right ${pct > 95 ? 'text-emerald-400' : pct > 70 ? 'text-amber-400' : 'text-red-400'}">${pct.toFixed(0)}%</span>
+                <span class="text-[10px] text-slate-500 w-28 text-right">${day.n.toLocaleString('fr')} rel | ${day.hours_covered}h</span>
+            </div>`;
+    });
+    document.getElementById('coverage').innerHTML = covHtml;
+
+    // Gaps
+    if (!d.gaps.length) {
+        document.getElementById('gaps-list').innerHTML = '<p class="text-emerald-400 text-sm font-semibold">Aucune coupure detectee</p>';
+    } else {
+        let gHtml = '';
+        d.gaps.forEach(g => {
+            const mins = g.gap_minutes;
+            const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+            const dur = h ? `${h}h${String(m).padStart(2,'0')}` : `${m} min`;
+            gHtml += `
+                <div class="flex items-center gap-3 px-3 py-2 rounded-xl bg-red-500/[0.06] ring-1 ring-red-400/15">
+                    <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01"/></svg>
+                    <span class="text-xs text-slate-300">${g.gap_start} <span class="text-slate-500">-></span> ${g.gap_end}</span>
+                    <span class="text-xs font-black text-red-400 ml-auto">${dur}</span>
+                </div>`;
+        });
+        document.getElementById('gaps-list').innerHTML = gHtml;
+    }
+
+    // Network state
+    let netHtml = `
+        <div class="flex items-center gap-4 text-sm font-semibold">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> ${d.current_normal} normales</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span> ${d.current_travaux} travaux</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-400"></span> ${d.current_alerts} perturbees</span>
+        </div>`;
+    if (d.alerts_detail.length) {
+        netHtml += '<div class="mt-3 space-y-1.5">';
+        d.alerts_detail.forEach(a => {
+            const clean = new DOMParser().parseFromString(a.title, 'text/html').body.textContent || '';
+            netHtml += `<div class="flex items-start gap-2 text-xs px-3 py-2 rounded-xl bg-red-500/[0.06] ring-1 ring-red-400/10">
+                <span class="font-bold text-red-400 shrink-0 w-16">${a.line}</span>
+                <span class="text-slate-400 line-clamp-2">${clean.slice(0, 120)}</span>
+            </div>`;
+        });
+        netHtml += '</div>';
+    }
+    document.getElementById('network-state').innerHTML = netHtml;
+}
+
+loadHealth();
+setInterval(loadHealth, 60000);
+</script>
+{% endblock %}

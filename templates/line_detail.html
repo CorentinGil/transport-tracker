@@ -16,6 +16,23 @@
     </div>
 </div>
 
+<!-- Station line diagram -->
+<div class="card mb-5" id="line-plan-card">
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-bold flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            </span>
+            Plan de la ligne
+        </h2>
+        <a id="ratp-plan-link" href="#" target="_blank" class="px-3 py-1.5 rounded-xl text-[11px] font-semibold bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 transition ring-1 ring-white/[0.06]">
+            Voir sur RATP.fr
+            <svg class="w-2.5 h-2.5 inline -mt-0.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </a>
+    </div>
+    <div id="line-plan" class="overflow-x-auto pb-2"></div>
+</div>
+
 <!-- Filters -->
 <div class="flex flex-wrap items-center gap-2 mb-5">
     <div id="year-tabs" class="flex flex-wrap gap-1"></div>
@@ -70,6 +87,67 @@ const LT = '{{ line_type }}', LI = '{{ line_id }}';
 let selectedYear = 'all';
 let filterDate = null;
 let chartHours, chartDow, chartTimeline, chartCauses;
+
+const LINE_COLORS = {
+    'metro-1':'#FFCD00','metro-2':'#003CA6','metro-3':'#837902','metro-3b':'#6EC4E8',
+    'metro-4':'#CF009E','metro-5':'#FF7E2E','metro-6':'#6ECA97','metro-7':'#FA9ABA',
+    'metro-7b':'#6ECA97','metro-8':'#E19BDF','metro-9':'#B6BD00','metro-10':'#C9910D',
+    'metro-11':'#704B1C','metro-12':'#007852','metro-13':'#6EC4E8','metro-14':'#62259D',
+    'rer-A':'#E3051C','rer-B':'#5291CE','rer-C':'#FFCD00','rer-D':'#00A86B','rer-E':'#BD76A1',
+    'tram-T1':'#003CA6','tram-T2':'#CF009E','tram-T3a':'#FF7E2E','tram-T3b':'#00A86B',
+    'tram-T4':'#E3051C','tram-T5':'#6B7280','tram-T6':'#E3051C','tram-T7':'#704B1C',
+    'tram-T8':'#837902','tram-T9':'#003CA6','tram-T10':'#C9910D','tram-T11':'#FF7E2E',
+    'tram-T12':'#007852','tram-T13':'#6EC4E8',
+};
+
+async function loadLinePlan() {
+    const key = `${LT}-${LI}`;
+    const color = LINE_COLORS[key] || '#818cf8';
+
+    const ratpType = LT === 'tram' ? 'tramway' : LT;
+    const ratpId = LI.toLowerCase().replace('t','');
+    document.getElementById('ratp-plan-link').href = `https://www.ratp.fr/plans-lignes/${ratpType}/${LT === 'tram' ? LI.toLowerCase() : LI}`;
+
+    try {
+        const all = await fetch('/static/data/stations.json').then(r => r.json());
+        const stations = all[key];
+        if (!stations || !stations.length) { document.getElementById('line-plan-card').style.display = 'none'; return; }
+        renderLinePlan(stations, color);
+    } catch(e) { document.getElementById('line-plan-card').style.display = 'none'; }
+}
+
+function renderLinePlan(stations, color) {
+    const n = stations.length;
+    const gap = 100;
+    const pad = 40;
+    const w = pad * 2 + (n - 1) * gap;
+    const h = 110;
+    const midY = 50;
+
+    let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="block" style="min-width:${w}px">`;
+    svg += `<line x1="${pad}" y1="${midY}" x2="${w - pad}" y2="${midY}" stroke="${color}" stroke-width="4" stroke-linecap="round"/>`;
+
+    stations.forEach((name, i) => {
+        const x = pad + i * gap;
+        const isTerminus = i === 0 || i === n - 1;
+        const r = isTerminus ? 7 : 4.5;
+
+        svg += `<circle cx="${x}" cy="${midY}" r="${r}" fill="${isTerminus ? color : '#0d1017'}" stroke="${color}" stroke-width="${isTerminus ? 0 : 2.5}"/>`;
+        if (isTerminus) svg += `<circle cx="${x}" cy="${midY}" r="3" fill="#fff"/>`;
+
+        const above = i % 2 === 0;
+        const ty = above ? midY - 16 : midY + 16;
+        const anchor = 'start';
+        const rotate = above ? -45 : 45;
+
+        svg += `<text x="${x}" y="${ty}" text-anchor="${anchor}" fill="#94a3b8" font-size="10" font-weight="${isTerminus ? 700 : 500}" font-family="Inter,system-ui,sans-serif" transform="rotate(${rotate} ${x} ${ty})">${name}</text>`;
+    });
+
+    svg += '</svg>';
+    document.getElementById('line-plan').innerHTML = svg;
+}
+
+loadLinePlan();
 
 const CAUSE_LABELS = {
     'perturbation':'Incident','travaux':'Travaux','greve':'Greve',

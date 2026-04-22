@@ -6,7 +6,8 @@ from database import init_db, get_current_status, get_disruption_ranking, \
     get_available_years, get_db, get_heatmap_data, get_prediction_data, get_multi_line_stats, \
     get_cause_ranking, get_cause_by_line, get_metro_tram_ranking, get_metro_tram_seasonal, \
     get_metro_tram_history, get_metro_tram_by_year, get_metro_tram_available_years, \
-    get_metro_tram_lines, get_monthly_trend, get_sparkline_data, get_recent_alerts
+    get_metro_tram_lines, get_monthly_trend, get_sparkline_data, get_recent_alerts, \
+    get_travaux_ranking
 from scraper import scrape_and_store, test_api_key
 from config import load_config, save_config, get_api_key
 from demo import generate_demo_data
@@ -57,6 +58,11 @@ def compare():
 @app.route("/map")
 def network_map():
     return render_template("map.html")
+
+
+@app.route("/admin")
+def admin():
+    return render_template("admin.html")
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -159,6 +165,71 @@ def api_line_history(line_type, line_id):
 def api_summary():
     start, end = _get_dates()
     return jsonify(get_stats_summary(start, end))
+
+@app.route("/api/health")
+def api_health():
+    from datetime import datetime, timedelta
+    conn = get_db()
+    r = conn.execute("SELECT MIN(timestamp) as mn, MAX(timestamp) as mx, COUNT(*) as n FROM line_status").fetchone()
+    if not r["n"]:
+        conn.close()
+        return jsonify({"status": "empty"})
+
+    lines_count = conn.execute("SELECT COUNT(DISTINCT line_type || '-' || line_id) FROM line_status").fetchone()[0]
+    last_dt = datetime.strptime(r["mx"], "%Y-%m-%d %H:%M:%S")
+    age_min = int((datetime.now() - last_dt).total_seconds() // 60)
+
+    days = conn.execute("""
+        SELECT DATE(timestamp) as d, COUNT(*) as n,
+            MIN(strftime('%H:%M', timestamp)) as first_h,
+            MAX(strftime('%H:%M', timestamp)) as last_h,
+            COUNT(DISTINCT strftime('%H', timestamp)) as hours_covered
+        FROM line_status WHERE DATE(timestamp) >= DATE('now', '-7 days')
+        GROUP BY d ORDER BY d
+    """).fetchall()
+
+    gaps = conn.execute("""
+        WITH ordered AS (
+            SELECT timestamp, LAG(timestamp) OVER (ORDER BY timestamp) as prev_ts
+            FROM (SELECT DISTINCT timestamp FROM line_status)
+        )
+        SELECT prev_ts as gap_start, timestamp as gap_end,
+            ROUND((JULIANDAY(timestamp) - JULIANDAY(prev_ts)) * 24 * 60, 0) as gap_minutes
+        FROM ordered
+        WHERE prev_ts IS NOT NULL AND (JULIANDAY(timestamp) - JULIANDAY(prev_ts)) * 24 * 60 > 15
+        ORDER BY gap_minutes DESC LIMIT 10
+    """).fetchall()
+
+    current = conn.execute("""
+        SELECT ls.line_type, ls.line_id, ls.status, ls.title
+        FROM line_status ls INNER JOIN (
+            SELECT line_type, line_id, MAX(timestamp) as max_ts FROM line_status GROUP BY line_type, line_id
+        ) latest ON ls.line_type = latest.line_type AND ls.line_id = latest.line_id AND ls.timestamp = latest.max_ts
+    """).fetchall()
+    conn.close()
+
+    expected_per_day = (24 * 60 / 5) * lines_count
+    scraper_ok = age_min <= 10
+    status = "ok" if scraper_ok and not gaps else "warning" if scraper_ok else "critical"
+
+    return jsonify({
+        "status": status,
+        "total_records": r["n"], "lines_count": lines_count,
+        "first_record": r["mn"], "last_record": r["mx"],
+        "last_scrape_age_min": age_min, "scraper_ok": scraper_ok,
+        "expected_per_day": int(expected_per_day),
+        "days": [dict(d) for d in days],
+        "gaps": [dict(g) for g in gaps],
+        "current_alerts": len([c for c in current if c["status"] == "alerte"]),
+        "current_travaux": len([c for c in current if c["status"] == "normal_trav"]),
+        "current_normal": len([c for c in current if c["status"] == "normal"]),
+        "alerts_detail": [{"line": f"{c['line_type']} {c['line_id']}", "title": c["title"] or ""} for c in current if c["status"] == "alerte"],
+    })
+
+@app.route("/api/travaux-ranking")
+def api_travaux_ranking():
+    start, end = _get_dates()
+    return jsonify(get_travaux_ranking(start, end))
 
 @app.route("/api/trend")
 def api_trend():

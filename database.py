@@ -342,6 +342,25 @@ def get_prediction_data(line_type=None, line_id=None):
     return [dict(r) for r in rows]
 
 
+def get_travaux_ranking(start_date=None, end_date=None):
+    """Rank lines by % of time spent in travaux (normal_trav status)."""
+    conn = get_db()
+    date_filter = _date_filter(start_date, end_date)
+    rows = conn.execute(f"""
+        SELECT line_type, line_id,
+            COUNT(*) as total_checks,
+            SUM(CASE WHEN status = 'normal_trav' THEN 1 ELSE 0 END) as travaux_checks,
+            ROUND(100.0 * SUM(CASE WHEN status = 'normal_trav' THEN 1 ELSE 0 END) / COUNT(*), 1) as travaux_pct
+        FROM line_status
+        WHERE 1=1 {date_filter}
+        GROUP BY line_type, line_id
+        HAVING travaux_checks > 0
+        ORDER BY travaux_pct DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_recent_alerts(limit=5):
     """Latest alert per line currently in disruption, newest first."""
     conn = get_db()
