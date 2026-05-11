@@ -91,21 +91,21 @@ async function loadHealth() {
 
     // KPIs
     document.getElementById('kpis').innerHTML = `
-        <div class="card card-glow !p-4 text-center">
-            <span class="text-3xl font-black tabular-nums text-white">${d.total_records.toLocaleString('fr')}</span>
-            <span class="text-[11px] text-slate-500 block mt-1">releves totaux</span>
+        <div class="stat-card stat-violet text-center">
+            <span class="text-3xl font-extrabold tabular-nums tracking-tight">${d.total_records.toLocaleString('fr')}</span>
+            <span class="text-[11px] opacity-80 block mt-1">relevés totaux</span>
         </div>
         <div class="card !p-4 text-center">
-            <span class="text-3xl font-black tabular-nums text-indigo-400">${d.lines_count}</span>
-            <span class="text-[11px] text-slate-500 block mt-1">lignes suivies</span>
+            <span class="text-3xl font-extrabold tabular-nums" style="color: var(--accent);">${d.lines_count}</span>
+            <span class="text-[11px] block mt-1" style="color: var(--muted);">lignes suivies</span>
         </div>
         <div class="card !p-4 text-center">
-            <span class="text-3xl font-black tabular-nums ${d.scraper_ok ? 'text-emerald-400' : 'text-red-400'}">${d.scraper_ok ? 'Actif' : 'Arrete'}</span>
-            <span class="text-[11px] text-slate-500 block mt-1">scraper</span>
+            <span class="text-3xl font-extrabold tabular-nums" style="color: ${d.scraper_ok ? 'var(--green)' : 'var(--red)'};">${d.scraper_ok ? 'Actif' : 'Arrêté'}</span>
+            <span class="text-[11px] block mt-1" style="color: var(--muted);">scraper</span>
         </div>
         <div class="card !p-4 text-center">
-            <span class="text-3xl font-black tabular-nums text-amber-400">${d.gaps.length}</span>
-            <span class="text-[11px] text-slate-500 block mt-1">coupures</span>
+            <span class="text-3xl font-extrabold tabular-nums" style="color: var(--amber);">${d.gaps.length}</span>
+            <span class="text-[11px] block mt-1" style="color: var(--muted);">coupures</span>
         </div>`;
 
     // Coverage bars
@@ -117,8 +117,8 @@ async function loadHealth() {
         covHtml += `
             <div class="flex items-center gap-3">
                 <span class="text-xs font-semibold text-slate-400 w-20 shrink-0 tabular-nums">${day.d.slice(5)}${today ? ' <span class="text-indigo-400">(auj)</span>' : ''}</span>
-                <div class="flex-1 h-4 rounded-full bg-white/[0.04] overflow-hidden">
-                    <div class="${col} h-full rounded-full transition-all" style="width:${pct}%"></div>
+                <div class="flex-1 track" style="height: 16px;">
+                    <span class="${col}" style="width:${pct}%"></span>
                 </div>
                 <span class="text-xs font-black tabular-nums w-12 text-right ${pct > 95 ? 'text-emerald-400' : pct > 70 ? 'text-amber-400' : 'text-red-400'}">${pct.toFixed(0)}%</span>
                 <span class="text-[10px] text-slate-500 w-28 text-right">${day.n.toLocaleString('fr')} rel | ${day.hours_covered}h</span>

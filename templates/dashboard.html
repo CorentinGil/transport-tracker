@@ -1,87 +1,106 @@
 {% extends "base.html" %}
-{% block title %}Transport Tracker{% endblock %}
+{% block title %}Transit·IDF — Tableau de bord{% endblock %}
 
 {% block content %}
-<!-- Year tabs -->
-<div id="year-tabs" class="flex flex-wrap items-center gap-2 mb-5"></div>
+<!-- Welcome + year scope -->
+<div class="flex items-end justify-between flex-wrap gap-4 mb-6">
+    <div>
+        <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight" style="color: var(--ink);">
+            Tableau de bord <span style="background: var(--grad-violet); -webkit-background-clip: text; background-clip: text; color: transparent;">en temps réel</span>
+        </h1>
+        <p class="text-sm mt-2" style="color: var(--muted);">Suivi des perturbations sur 35 lignes du réseau francilien.</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <span class="eyebrow mr-1">Période</span>
+        <div id="year-tabs" class="flex items-center gap-1"></div>
+    </div>
+</div>
 
-<!-- Summary banner -->
-<div id="summary-banner" class="mb-5"></div>
+<!-- HERO stat cards (gradient) -->
+<section id="summary-banner" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></section>
 
-<!-- Live pulse strip: Feed + Prediction + Moment critique -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-    <!-- Live feed (collapsible, collapsed by default) -->
+<!-- Quick widgets : Live feed + Prediction + Moment critique -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <!-- Live feed -->
     <div class="card" id="feed-card">
         <button onclick="toggleFeed()" class="w-full flex items-center justify-between group">
-            <div class="text-left">
-                <h2 class="text-base font-bold flex items-center gap-2">
-                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500">
-                        <span class="pulse-dot bg-red-500"></span>
-                    </span>
-                    En direct
-                    <span id="feed-count" class="ml-1 text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-500"></span>
-                </h2>
-                <p class="text-[11px] text-slate-400 mt-0.5 ml-8">Dernieres perturbations detectees</p>
+            <div class="text-left flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: var(--red-soft);">
+                    <span class="pulse-dot"></span>
+                </span>
+                <div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-bold text-[15px]">En direct</span>
+                        <span id="feed-count" class="pill pill-red"></span>
+                    </div>
+                    <p class="text-[11px]" style="color: var(--muted);">Dernières perturbations</p>
+                </div>
             </div>
-            <svg id="feed-chevron" class="w-4 h-4 text-slate-400 group-hover:text-slate-200 transition-transform" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <svg id="feed-chevron" class="w-4 h-4 transition-transform" style="color: var(--muted);" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
             </svg>
         </button>
-        <div id="feed-list" class="space-y-2 max-h-[360px] overflow-y-auto pr-1 mt-3 hidden"></div>
+        <div id="feed-list" class="space-y-2 max-h-[300px] overflow-y-auto pr-1 mt-3 hidden"></div>
     </div>
 
-    <!-- Prediction maintenant -->
+    <!-- Prediction -->
     <div class="card">
-        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-500">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: var(--accent-soft); color: var(--accent);">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6l12 7-12 6z" transform="rotate(-45 12 12)"/><circle cx="12" cy="12" r="9"/></svg>
             </span>
-            Probabilite maintenant
-        </h2>
-        <p class="text-[11px] text-slate-400 mb-3" id="predict-context">—</p>
-        <div id="predict-card" class="flex items-center gap-4">
+            <div>
+                <div class="font-bold text-[15px]">Probabilité maintenant</div>
+                <p class="text-[11px]" id="predict-context" style="color: var(--muted);">—</p>
+            </div>
+        </div>
+        <div id="predict-card" class="flex items-center gap-4 mt-3">
             <div class="relative w-24 h-24 shrink-0">
                 <canvas id="chart-predict"></canvas>
-                <div id="predict-value" class="absolute inset-0 flex items-center justify-center text-xl font-black tabular-nums"></div>
+                <div id="predict-value" class="absolute inset-0 flex items-center justify-center text-xl font-extrabold tabular-nums"></div>
             </div>
             <div class="flex-1 leading-tight">
-                <p id="predict-label" class="text-xs font-semibold"></p>
-                <p id="predict-samples" class="text-[10px] text-slate-400 mt-1"></p>
+                <p id="predict-label" class="text-sm font-bold"></p>
+                <p id="predict-samples" class="text-[11px] mt-1" style="color: var(--muted);"></p>
             </div>
         </div>
     </div>
 
     <!-- Moment critique -->
     <div class="card">
-        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-orange-500/10 text-orange-500">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <div class="flex items-center gap-3 mb-1">
+            <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-rose);">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             </span>
-            Moment critique
-        </h2>
-        <p class="text-[11px] text-slate-400 mb-3">Creneau le plus perturbe de la semaine</p>
-        <div id="peak-card" class="flex items-center gap-4">
-            <div class="text-4xl font-black tabular-nums text-orange-500" id="peak-value">—</div>
+            <div>
+                <div class="font-bold text-[15px]">Moment critique</div>
+                <p class="text-[11px]" style="color: var(--muted);">Le pire créneau de la semaine</p>
+            </div>
+        </div>
+        <div id="peak-card" class="flex items-baseline gap-4 mt-4">
+            <div class="text-5xl font-extrabold tabular-nums tracking-tight" id="peak-value" style="background: var(--grad-rose); -webkit-background-clip: text; background-clip: text; color: transparent;">—</div>
             <div class="leading-tight">
                 <p class="text-sm font-bold" id="peak-when">—</p>
-                <p class="text-[10px] text-slate-400 mt-0.5">du reseau perturbe</p>
+                <p class="text-[11px]" style="color: var(--muted);">du réseau perturbé</p>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Current status -->
-<div class="card mb-5">
+<!-- Statut en direct -->
+<div class="card mb-6">
     <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-bold flex items-center gap-2">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-emerald);">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/></svg>
             </span>
-            Statut en direct
-        </h2>
-        <button onclick="toggleCompact()" id="compact-toggle" class="tab-pill" title="Basculer vue compacte / detaillee">
-            <svg class="w-3 h-3 inline -mt-0.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-            <span id="compact-toggle-label">Detaille</span>
+            <div>
+                <h2 class="font-bold text-[16px]">Statut du réseau</h2>
+                <p class="text-[11px]" style="color: var(--muted);">35 lignes surveillées en temps réel</p>
+            </div>
+        </div>
+        <button onclick="toggleCompact()" id="compact-toggle" class="tab-pill" title="Vue compacte / détaillée">
+            <span id="compact-toggle-label">Détaillé</span>
         </button>
     </div>
     <div id="status-compact" class="mb-4 hidden"></div>
@@ -89,107 +108,94 @@
 </div>
 
 <!-- Rankings: Pires | Meilleures -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
     <div class="card">
-        <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-red-500/10 text-red-500">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 17l6-6 4 4 8-8M21 7h-6m6 0v6"/></svg>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-rose);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 17l6-6 4 4 8-8M21 7h-6m6 0v6"/></svg>
                 </span>
-                Pires lignes
-            </h2>
-            <div class="flex gap-1" id="ranking-tabs"></div>
+                <h2 class="font-bold text-[16px]">Les pires lignes</h2>
+            </div>
+            <div class="flex gap-1 flex-wrap" id="ranking-tabs"></div>
         </div>
-        <div id="ranking-list" class="space-y-1.5 max-h-[400px] overflow-y-auto pr-1"></div>
+        <div id="ranking-list" class="space-y-1.5 max-h-[420px] overflow-y-auto pr-1"></div>
     </div>
 
     <div class="card">
-        <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7l-6 6-4-4-8 8M3 17h6m-6 0v-6"/></svg>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-emerald);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7l-6 6-4-4-8 8M3 17h6m-6 0v-6"/></svg>
                 </span>
-                Meilleures lignes
-            </h2>
-            <div class="flex gap-1" id="best-tabs"></div>
+                <h2 class="font-bold text-[16px]">Les plus fiables</h2>
+            </div>
+            <div class="flex gap-1 flex-wrap" id="best-tabs"></div>
         </div>
-        <div id="best-list" class="space-y-1.5 max-h-[400px] overflow-y-auto pr-1"></div>
+        <div id="best-list" class="space-y-1.5 max-h-[420px] overflow-y-auto pr-1"></div>
     </div>
 </div>
 
 <!-- Travaux ranking -->
-<div class="card mb-4">
-    <div class="flex items-center justify-between mb-3">
-        <h2 class="text-base font-bold flex items-center gap-2">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.59-5.59a2 2 0 112.83-2.83l5.59 5.59m0 0l2.83-2.83a2 2 0 112.83 2.83l-2.83 2.83m-2.83-2.83L8.59 19a2 2 0 01-2.83 0l-1.76-1.76a2 2 0 010-2.83L15.17 3.17"/></svg>
+<div class="card mb-6">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: var(--amber-soft); color: var(--amber);">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.59-5.59a2 2 0 112.83-2.83l5.59 5.59m0 0l2.83-2.83a2 2 0 112.83 2.83l-2.83 2.83m-2.83-2.83L8.59 19a2 2 0 01-2.83 0l-1.76-1.76a2 2 0 010-2.83L15.17 3.17"/></svg>
             </span>
-            Lignes les plus en travaux
-        </h2>
-        <div class="flex gap-1" id="travaux-tabs"></div>
+            <h2 class="font-bold text-[16px]">Lignes les plus en travaux</h2>
+        </div>
+        <div class="flex gap-1 flex-wrap" id="travaux-tabs"></div>
     </div>
     <div id="travaux-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[350px] overflow-y-auto pr-1"></div>
 </div>
 
 <!-- Hour + Day -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
     <div class="card">
-        <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-blue-500/10 text-blue-500">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-cyan);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </span>
-                Par heure
-            </h2>
-            <div class="flex gap-1" id="hours-tabs"></div>
+                <h2 class="font-bold text-[16px]">Par heure</h2>
+            </div>
+            <div class="flex gap-1 flex-wrap" id="hours-tabs"></div>
         </div>
         <canvas id="chart-hours" height="200"></canvas>
     </div>
 
     <div class="card">
-        <div class="flex items-center justify-between mb-3">
-            <h2 class="text-base font-bold flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-purple-500/10 text-purple-500">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-violet);">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                 </span>
-                Par jour
-            </h2>
-            <div class="flex gap-1" id="dow-tabs"></div>
+                <h2 class="font-bold text-[16px]">Par jour</h2>
+            </div>
+            <div class="flex gap-1 flex-wrap" id="dow-tabs"></div>
         </div>
         <canvas id="chart-dow" height="200"></canvas>
     </div>
 </div>
 
-<!-- Heatmap + Causes -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-    <div class="card">
-        <h2 class="text-base font-bold flex items-center gap-2 mb-1">
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-rose-500/10 text-rose-500">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </span>
-            Heatmap jour / heure
-        </h2>
-        <p class="text-[11px] text-slate-400 mb-3">Perturbation moyenne par creneau</p>
-        <div id="heatmap" class="overflow-x-auto"></div>
+<!-- Causes -->
+<div class="card mb-6">
+    <div class="flex items-center gap-3 mb-4">
+        <span class="w-9 h-9 rounded-xl flex items-center justify-center" style="background: var(--accent-soft); color: var(--accent);">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </span>
+        <div>
+            <h2 class="font-bold text-[16px]">Causes des perturbations</h2>
+            <p class="text-[11px]" style="color: var(--muted);">Incidents seuls — travaux planifiés exclus</p>
+        </div>
     </div>
-
-    <div class="card">
-        <div class="mb-3">
-            <h2 class="text-base font-bold flex items-center gap-2">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500/10 text-amber-500">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </span>
-                Causes des perturbations
-            </h2>
-            <p class="text-[11px] text-slate-400 mt-1 ml-8">Incidents uniquement (hors travaux planifies)</p>
+    <div class="flex flex-col lg:flex-row items-center gap-6">
+        <div class="relative w-52 h-52 shrink-0">
+            <canvas id="chart-causes"></canvas>
+            <div id="causes-total" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-tight"></div>
         </div>
-        <div class="flex items-center gap-5">
-            <div class="relative w-48 h-48 shrink-0">
-                <canvas id="chart-causes"></canvas>
-                <div id="causes-total" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-tight"></div>
-            </div>
-            <div id="causes-list" class="flex-1 space-y-1 max-h-[220px] overflow-y-auto pr-1"></div>
-        </div>
+        <div id="causes-list" class="flex-1 w-full space-y-1 max-h-[240px] overflow-y-auto pr-1"></div>
     </div>
 </div>
 {% endblock %}
@@ -287,7 +293,7 @@ async function loadAll() {
     await Promise.all([
         loadSummary(), loadCurrentStatus(), loadRanking(), loadTravaux(),
         loadByHour(), loadByDow(), loadCauses(),
-        loadFeed(), loadHeatmapAndPeak(), loadPrediction(),
+        loadFeed(), loadPeak(), loadPrediction(),
     ]);
 }
 
@@ -311,50 +317,63 @@ async function loadSummary() {
     const totalL = data.total_lines || 0;
     const events = data.distinct_events || 0;
     const pct = totalC > 0 ? (100 * totalD / totalC).toFixed(1) : 0;
-    const pctColor = pct > 10 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
-    const pctBg = pct > 10 ? 'from-red-500/10 to-red-500/5' : pct > 5 ? 'from-amber-500/10 to-amber-500/5' : 'from-emerald-500/10 to-emerald-500/5';
-
-    let trendHtml = '';
-    if (trend && trend.delta !== null && trend.delta !== undefined) {
-        const d = trend.delta;
-        const up = d > 0, flat = Math.abs(d) < 0.1;
-        const tColor = flat ? 'text-slate-400' : up ? 'text-red-500' : 'text-emerald-500';
-        const arrow = flat ? '→' : up ? '▲' : '▼';
-        trendHtml = `
-            <div class="w-px h-8 bg-white/[0.06]"></div>
-            <div class="leading-tight">
-                <span class="text-sm font-black ${tColor}">${arrow} ${Math.abs(d).toFixed(2)} pts</span>
-                <span class="text-[11px] text-slate-400 block">vs mois precedent</span>
-            </div>`;
-    }
-
     const period = formatPeriod(data.first_record, data.last_record);
 
+    let trendBadge = '<span class="pill pill-violet" style="background:rgba(255,255,255,0.18);color:#fff;">Pas de données</span>';
+    if (trend && trend.delta !== null && trend.delta !== undefined) {
+        const d = trend.delta;
+        const flat = Math.abs(d) < 0.1;
+        const arrow = flat ? '→' : d > 0 ? '↑' : '↓';
+        trendBadge = `<span class="pill" style="background:rgba(255,255,255,0.22);color:#fff;">${arrow} ${Math.abs(d).toFixed(2)} pts</span>`;
+    }
+
     document.getElementById('summary-banner').innerHTML = `
-        <div class="card card-glow flex flex-wrap items-center gap-6 px-6 py-5">
-            <div class="flex items-center gap-3">
-                <span class="text-4xl font-black ${pctColor} tabular-nums" style="text-shadow:0 0 20px currentColor">${pct}%</span>
-                <div class="leading-tight">
-                    <span class="text-sm font-bold text-slate-200">du reseau perturbe</span>
-                    <span class="text-[11px] text-slate-500 block">hors travaux planifies</span>
-                </div>
+        <div class="stat-card stat-violet">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-bold uppercase tracking-wider opacity-90">Réseau perturbé</span>
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center bg-white/20 backdrop-blur">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </span>
             </div>
-            <div class="w-px h-8 bg-white/[0.06]"></div>
-            <div class="leading-tight" title="Evenements distincts : chaque perturbation comptee une seule fois. ${totalD.toLocaleString('fr')} releves bruts.">
-                <span class="text-lg font-black text-indigo-400 tabular-nums">${events.toLocaleString('fr')}</span>
-                <span class="text-[11px] text-slate-500 block">perturbations distinctes</span>
+            <div class="mt-4 text-5xl font-extrabold tabular-nums tracking-tight">${pct}<span class="text-2xl opacity-70 ml-0.5">%</span></div>
+            <p class="text-[11px] mt-2 opacity-80">Hors travaux planifiés</p>
+            <div class="mt-3">${trendBadge}</div>
+        </div>
+
+        <div class="stat-card stat-rose">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-bold uppercase tracking-wider opacity-90">Incidents distincts</span>
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center bg-white/20 backdrop-blur">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5 19a2 2 0 01-1.732-3l7-12a2 2 0 013.464 0l7 12A2 2 0 0119 19H5z"/></svg>
+                </span>
             </div>
-            <div class="w-px h-8 bg-white/[0.06]"></div>
-            <div class="leading-tight">
-                <span class="text-lg font-black text-slate-200 tabular-nums">${totalL}</span>
-                <span class="text-[11px] text-slate-500 block">lignes suivies</span>
+            <div class="mt-4 text-5xl font-extrabold tabular-nums tracking-tight">${events.toLocaleString('fr')}</div>
+            <p class="text-[11px] mt-2 opacity-80" title="${totalD.toLocaleString('fr')} relevés bruts">Chaque perturbation comptée une fois</p>
+            <div class="mt-3"><span class="pill" style="background:rgba(255,255,255,0.22);color:#fff;">${totalD.toLocaleString('fr')} relevés</span></div>
+        </div>
+
+        <div class="stat-card stat-cyan">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-bold uppercase tracking-wider opacity-90">Lignes suivies</span>
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center bg-white/20 backdrop-blur">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>
+                </span>
             </div>
-            <div class="w-px h-8 bg-white/[0.06]"></div>
-            <div class="leading-tight">
-                <span class="text-xs font-bold text-slate-400">${period}</span>
-                <span class="text-[11px] text-slate-500 block">periode couverte</span>
+            <div class="mt-4 text-5xl font-extrabold tabular-nums tracking-tight">${totalL}</div>
+            <p class="text-[11px] mt-2 opacity-80">Métro · RER · Tramway</p>
+            <div class="mt-3"><span class="pill" style="background:rgba(255,255,255,0.22);color:#fff;">Toutes les 5 min</span></div>
+        </div>
+
+        <div class="stat-card stat-emerald">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-bold uppercase tracking-wider opacity-90">Période couverte</span>
+                <span class="w-9 h-9 rounded-xl flex items-center justify-center bg-white/20 backdrop-blur">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </span>
             </div>
-            ${trendHtml}
+            <div class="mt-4 text-xl font-extrabold tracking-tight">${period}</div>
+            <p class="text-[11px] mt-2 opacity-80">Collecte en continu</p>
+            <div class="mt-3"><span class="pill" style="background:rgba(255,255,255,0.22);color:#fff;">Live</span></div>
         </div>
     `;
 }
@@ -392,9 +411,9 @@ function toggleFeed() {
 async function loadFeed() {
     const data = await fetch('/api/recent-alerts?limit=5').then(r => r.json());
     const countEl = document.getElementById('feed-count');
-    if (countEl) countEl.textContent = data.length ? String(data.length) : '';
+    if (countEl) countEl.textContent = data.length ? `${data.length}` : '0';
     if (!data.length) {
-        document.getElementById('feed-list').innerHTML = '<p class="text-slate-400 text-sm">Pas de perturbation en cours</p>';
+        document.getElementById('feed-list').innerHTML = '<p class="text-sm py-4 text-center" style="color: var(--muted);">Aucune perturbation en cours</p>';
         applyFeedState();
         return;
     }
@@ -402,14 +421,14 @@ async function loadFeed() {
     data.forEach(d => {
         const msg = cleanMsg(d.title || d.message);
         html += `
-            <a href="/line/${d.line_type}/${d.line_id}" class="flex gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.04] transition ring-1 ring-red-400/15 bg-red-500/[0.04]">
+            <a href="/line/${d.line_type}/${d.line_id}" class="flex gap-3 p-2.5 rounded-xl transition" style="background: var(--red-soft);">
                 ${lineIcon(d.line_type, d.line_id, 'sm')}
                 <div class="flex-1 min-w-0 leading-tight">
                     <div class="flex items-center justify-between gap-2">
-                        <span class="text-xs font-semibold capitalize">${d.line_type} ${d.line_id}</span>
-                        <span class="text-[9px] text-slate-400 font-semibold shrink-0">${timeAgo(d.timestamp)}</span>
+                        <span class="text-xs font-bold capitalize">${d.line_type} ${d.line_id}</span>
+                        <span class="text-[10px] font-semibold tabular-nums shrink-0" style="color: var(--muted);">${timeAgo(d.timestamp)}</span>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-0.5 line-clamp-2">${msg || 'Incident en cours'}</p>
+                    <p class="text-[11px] mt-1 line-clamp-2" style="color: var(--ink-soft);">${msg || 'Incident en cours'}</p>
                 </div>
             </a>`;
     });
@@ -428,14 +447,18 @@ async function loadPrediction() {
     const pct = cell ? cell.pct : 0;
     const samples = cell ? cell.samples : 0;
 
-    const color = pct > 15 ? '#f87171' : pct > 5 ? '#fbbf24' : '#34d399';
-    const label = pct > 15 ? 'Risque eleve' : pct > 5 ? 'Moderation' : 'Tout roule';
+    const isDark = document.documentElement.classList.contains('dark');
+    const red = isDark ? '#f87171' : '#ef4444';
+    const amber = isDark ? '#fbbf24' : '#f59e0b';
+    const green = isDark ? '#34d399' : '#10b981';
+    const color = pct > 15 ? red : pct > 5 ? amber : green;
+    const label = pct > 15 ? 'Risque élevé' : pct > 5 ? 'Modéré' : 'Tout roule';
     const now_label = `${DOW_LABELS[dow]} ${String(hour).padStart(2,'0')}h`;
 
-    document.getElementById('predict-context').textContent = `${now_label} — d'apres l'historique`;
+    document.getElementById('predict-context').textContent = `${now_label} — d'après l'historique`;
     document.getElementById('predict-value').innerHTML = `<span style="color:${color}">${pct}%</span>`;
     document.getElementById('predict-label').innerHTML = `<span style="color:${color}">${label}</span>`;
-    document.getElementById('predict-samples').textContent = samples ? `Base sur ${samples.toLocaleString('fr')} releves` : 'Pas assez de donnees';
+    document.getElementById('predict-samples').textContent = samples ? `${samples.toLocaleString('fr')} relevés` : 'Pas assez de données';
 
     if (chartPredict) chartPredict.destroy();
     chartPredict = new Chart(document.getElementById('chart-predict'), {
@@ -443,67 +466,32 @@ async function loadPrediction() {
         data: {
             datasets: [{
                 data: [pct, Math.max(0, 100 - pct)],
-                backgroundColor: [color, 'rgba(255,255,255,0.04)'],
+                backgroundColor: [color, isDark ? 'rgba(241,243,251,0.08)' : 'rgba(15,18,40,0.08)'],
                 borderWidth: 0,
             }],
         },
         options: {
             responsive: true, maintainAspectRatio: true,
-            cutout: '75%',
+            cutout: '76%',
             plugins: { legend: { display: false }, tooltip: { enabled: false } },
             animation: { animateRotate: true, duration: 600 },
         },
     });
 }
 
-// --- Heatmap + Moment critique ---
+// --- Moment critique (peak only, heatmap removed) ---
 
-async function loadHeatmapAndPeak() {
+async function loadPeak() {
     const data = await fetch('/api/heatmap').then(r => r.json());
-    // Build 7 x 24 grid
-    const grid = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => null));
     let peak = { pct: -1, dow: 0, hour: 0 };
     data.forEach(d => {
         if (d.pct == null) return;
-        grid[d.dow][d.hour] = d.pct;
         if (d.pct > peak.pct) peak = { pct: d.pct, dow: d.dow, hour: d.hour };
     });
-
-    // Render heatmap (mon-sun rows)
-    const rowOrder = [1, 2, 3, 4, 5, 6, 0];
-    let html = '<div style="display:grid;grid-template-columns:auto repeat(24, minmax(14px, 1fr));gap:2px;font-size:9px;min-width:520px">';
-    // Header row
-    html += '<div></div>';
-    for (let h = 0; h < 24; h++) {
-        html += `<div class="text-slate-400 text-center" style="font-size:8px">${h % 3 === 0 ? h + 'h' : ''}</div>`;
-    }
-    for (const d of rowOrder) {
-        html += `<div class="text-slate-400 font-semibold pr-1" style="line-height:14px">${DOW_LABELS[d]}</div>`;
-        for (let h = 0; h < 24; h++) {
-            const v = grid[d][h];
-            const bg = heatColor(v);
-            const title = v == null ? `${DOW_LABELS[d]} ${h}h — pas de donnees` : `${DOW_LABELS[d]} ${h}h — ${v}%`;
-            html += `<div title="${title}" style="height:14px;border-radius:3px;background:${bg}"></div>`;
-        }
-    }
-    html += '</div>';
-    document.getElementById('heatmap').innerHTML = html;
-
-    // Peak card
     if (peak.pct >= 0) {
         document.getElementById('peak-value').textContent = `${peak.pct}%`;
-        document.getElementById('peak-when').textContent = `${DOW_LABELS[peak.dow]} — ${String(peak.hour).padStart(2,'0')}h`;
+        document.getElementById('peak-when').textContent = `${DOW_LABELS[peak.dow]} ${String(peak.hour).padStart(2,'0')}h`;
     }
-}
-
-function heatColor(v) {
-    if (v == null) return 'rgba(255,255,255,0.03)';
-    if (v < 1) return 'rgba(52,211,153,0.12)';
-    if (v < 5) return 'rgba(52,211,153,0.35)';
-    if (v < 10) return 'rgba(251,191,36,0.4)';
-    if (v < 20) return 'rgba(251,146,60,0.5)';
-    if (v < 35) return 'rgba(248,113,113,0.6)';
-    return 'rgba(248,113,113,0.85)';
 }
 
 // --- Current status ---
@@ -523,32 +511,32 @@ function applyCompactMode() {
 async function loadCurrentStatus() {
     const data = await fetch('/api/current').then(r => r.json());
     if (!data.length) {
-        document.getElementById('current-status').innerHTML = '<p class="text-slate-400 text-sm">En attente de la premiere collecte...</p>';
+        document.getElementById('current-status').innerHTML = '<p class="text-sm text-center py-4" style="color: var(--muted);">En attente de la première collecte...</p>';
         return;
     }
 
     const groups = { metro: [], rer: [], tram: [] };
     data.forEach(d => { if (groups[d.line_type]) groups[d.line_type].push(d); });
-    const labels = { metro: 'Metro', rer: 'RER', tram: 'Tramway' };
+    const labels = { metro: 'Métro', rer: 'RER', tram: 'Tramway' };
 
     const alertCount = data.filter(d => d.status === 'alerte').length;
     const travauxCount = data.filter(d => d.status === 'normal_trav').length;
     const normalCount = data.length - alertCount - travauxCount;
 
     let compactHtml = `
-        <div class="flex items-center gap-4 mb-3 text-[11px] font-semibold">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>${normalCount} normales</span>
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>${travauxCount} travaux</span>
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>${alertCount} perturbees</span>
+        <div class="flex items-center gap-2 flex-wrap mb-4">
+            <span class="pill pill-green"><span class="w-1.5 h-1.5 rounded-full" style="background: var(--green);"></span>${normalCount} normales</span>
+            <span class="pill pill-amber"><span class="w-1.5 h-1.5 rounded-full" style="background: var(--amber);"></span>${travauxCount} travaux</span>
+            <span class="pill pill-red"><span class="w-1.5 h-1.5 rounded-full" style="background: var(--red);"></span>${alertCount} perturbées</span>
         </div>`;
     for (const [type, lines] of Object.entries(groups)) {
         if (!lines.length) continue;
-        compactHtml += `<div class="flex items-center gap-2 flex-wrap mb-2">
-            <img src="/static/icons/${type}.svg" alt="${type}" width="16" height="16" style="flex-shrink:0" onerror="this.outerHTML=typeIcon('${type}')">`;
+        compactHtml += `<div class="flex items-center gap-2 flex-wrap mb-3">
+            <span class="text-[11px] font-bold uppercase tracking-wider w-12" style="color: var(--muted);">${labels[type]}</span>`;
         for (const l of lines) {
-            const dot = l.status === 'normal' ? 'ring-emerald-400/60' : l.status === 'alerte' ? 'ring-red-500/70' : 'ring-amber-400/60';
+            const ringColor = l.status === 'normal' ? 'var(--green)' : l.status === 'alerte' ? 'var(--red)' : 'var(--amber)';
             const title = `${type.toUpperCase()} ${l.line_id} — ${statusLabel(l.status)}${l.title ? ': ' + cleanMsg(l.title).replace(/"/g, "'") : ''}`;
-            compactHtml += `<a href="/line/${l.line_type}/${l.line_id}" title="${title}" class="relative ring-2 ${dot} rounded-full hover:scale-110 transition-transform inline-block">${lineIcon(l.line_type, l.line_id, 'sm')}</a>`;
+            compactHtml += `<a href="/line/${l.line_type}/${l.line_id}" title="${title}" style="box-shadow: 0 0 0 2px ${ringColor};border-radius:9999px;display:inline-block;transition:transform 150ms;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform=''">${lineIcon(l.line_type, l.line_id, 'sm')}</a>`;
         }
         compactHtml += '</div>';
     }
@@ -558,24 +546,26 @@ async function loadCurrentStatus() {
     for (const [type, lines] of Object.entries(groups)) {
         if (!lines.length) continue;
         html += `<div>
-            <div class="flex items-center mb-2.5"><img src="/static/icons/${type}.svg" alt="${type}" width="20" height="20" style="margin-right:6px;flex-shrink:0" onerror="this.outerHTML=''">${typeIcon(type)}<span class="text-xs font-bold text-slate-400 uppercase tracking-wider">${labels[type]}</span></div>
+            <div class="flex items-center gap-2 mb-3">
+                <img src="/static/icons/${type}.svg" alt="${type}" width="18" height="18" style="flex-shrink:0" onerror="this.style.display='none'">
+                <span class="text-xs font-bold uppercase tracking-wider" style="color: var(--muted);">${labels[type]}</span>
+            </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">`;
 
         for (const l of lines) {
             const ok = l.status === 'normal';
-            const ring = ok ? 'ring-emerald-400/20' : l.status === 'alerte' ? 'ring-red-400/25' : 'ring-amber-400/20';
-            const bg = ok ? 'bg-white/[0.02]' : l.status === 'alerte' ? 'bg-red-500/[0.06]' : 'bg-amber-500/[0.06]';
-            const dot = ok ? 'bg-emerald-400' : l.status === 'alerte' ? 'bg-red-400' : 'bg-amber-400';
+            const bgVar = ok ? 'transparent' : l.status === 'alerte' ? 'var(--red-soft)' : 'var(--amber-soft)';
+            const dot = ok ? 'var(--green)' : l.status === 'alerte' ? 'var(--red)' : 'var(--amber)';
 
             html += `
-                <a href="/line/${l.line_type}/${l.line_id}" class="flex items-center gap-2.5 p-2 rounded-xl ring-1 ${ring} ${bg} hover:scale-[1.02] active:scale-[0.98] transition-all">
+                <a href="/line/${l.line_type}/${l.line_id}" class="flex items-center gap-2.5 p-2.5 rounded-xl transition" style="background: ${bgVar}; border: 1px solid var(--hairline);">
                     ${lineIcon(type, l.line_id)}
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5">
-                            <span class="w-1.5 h-1.5 rounded-full ${dot}"></span>
-                            <span class="text-[11px] font-semibold">${statusLabel(l.status)}</span>
+                            <span class="w-1.5 h-1.5 rounded-full" style="background: ${dot};"></span>
+                            <span class="text-[11px] font-bold">${statusLabel(l.status)}</span>
                         </div>
-                        ${!ok ? `<p class="text-[9px] text-slate-400 truncate mt-0.5 leading-tight">${cleanMsg(l.title) || ''}</p>` : ''}
+                        ${!ok ? `<p class="text-[10px] truncate mt-0.5" style="color: var(--muted);">${cleanMsg(l.title) || ''}</p>` : ''}
                     </div>
                 </a>`;
         }
@@ -629,28 +619,35 @@ async function loadRanking() {
 
 function renderRankingRow(d, i, bestMode) {
     const pct = d.disruption_pct || 0;
-    const barColor = pct > 15 ? 'bg-red-400' : pct > 5 ? 'bg-amber-400' : 'bg-emerald-400';
-    const textColor = pct > 15 ? 'text-red-400' : pct > 5 ? 'text-amber-400' : 'text-emerald-400';
-    const sparkColor = pct > 15 ? '#f87171' : pct > 5 ? '#fbbf24' : '#34d399';
-    const medal = bestMode
-        ? (i === 0 ? 'text-emerald-500' : i === 1 ? 'text-emerald-400' : i === 2 ? 'text-emerald-300' : 'text-slate-300 dark:text-slate-600')
-        : (i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-400' : i === 2 ? 'text-orange-400' : 'text-slate-300 dark:text-slate-600');
+    const isDark = document.documentElement.classList.contains('dark');
+    const valueColor = bestMode
+        ? 'color: var(--green);'
+        : (pct > 15 ? 'color: var(--red);' : pct > 5 ? 'color: var(--amber);' : 'color: var(--green);');
+    const sparkColor = bestMode
+        ? (isDark ? '#34d399' : '#10b981')
+        : (pct > 15 ? (isDark ? '#f87171' : '#ef4444') : pct > 5 ? (isDark ? '#fbbf24' : '#f59e0b') : (isDark ? '#34d399' : '#10b981'));
+    const barColor = bestMode
+        ? 'var(--green)'
+        : (pct > 15 ? 'var(--red)' : pct > 5 ? 'var(--amber)' : 'var(--green)');
     const spark = renderSparkline(sparklineMap[`${d.line_type}-${d.line_id}`], sparkColor);
+    const medal = i === 0 ? 'var(--grad-violet)' : i === 1 ? 'linear-gradient(135deg,#94a3b8,#64748b)' : i === 2 ? 'linear-gradient(135deg,#f59e0b,#ea580c)' : 'transparent';
+    const medalText = i < 3 ? '#fff' : 'var(--muted)';
+    const medalStyle = i < 3 ? `background:${medal};color:${medalText};` : `background:var(--bg-soft);color:${medalText};`;
 
     return `
-        <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-2.5 py-1.5 px-2 rounded-xl hover:bg-white/[0.04] transition group">
-            <span class="text-[11px] font-black w-5 text-right ${medal}">${i + 1}</span>
+        <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition">
+            <span class="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-extrabold tabular-nums shrink-0" style="${medalStyle}">${i + 1}</span>
             ${lineIcon(d.line_type, d.line_id, 'sm')}
             <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs font-semibold capitalize">${d.line_type} ${d.line_id}</span>
+                    <span class="text-[13px] font-semibold capitalize">${d.line_type} ${d.line_id}</span>
                     <div class="flex items-center gap-2">
                         ${spark}
-                        <span class="text-xs font-black tabular-nums ${textColor} w-10 text-right">${pct}%</span>
+                        <span class="text-[14px] font-extrabold tabular-nums w-12 text-right" style="${valueColor}">${pct}%</span>
                     </div>
                 </div>
-                <div class="w-full bg-white/[0.06] rounded-full h-1 mt-1">
-                    <div class="${barColor} h-1 rounded-full transition-all" style="width:${Math.min(pct, 100)}%"></div>
+                <div class="track mt-1.5">
+                    <span style="width:${Math.min(pct, 100)}%; background:${barColor};"></span>
                 </div>
             </div>
         </a>`;
@@ -685,19 +682,18 @@ async function loadTravaux() {
 function renderTravaux() {
     const data = travauxType === 'all' ? travauxData : travauxData.filter(d => d.line_type === travauxType);
     if (!data.length) {
-        document.getElementById('travaux-list').innerHTML = '<p class="text-slate-500 text-sm">Aucun travaux detecte</p>';
+        document.getElementById('travaux-list').innerHTML = '<p class="text-sm py-4 text-center" style="color: var(--muted);">Aucun chantier détecté</p>';
         return;
     }
     let html = '';
     data.forEach((d, i) => {
         const pct = d.travaux_pct || 0;
-        const color = pct > 80 ? 'text-amber-400' : pct > 50 ? 'text-amber-500/80' : 'text-slate-400';
         html += `
-            <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-2.5 py-2 px-3 rounded-xl hover:bg-white/[0.04] transition ring-1 ring-amber-400/${pct > 80 ? '15' : '08'}">
-                <span class="text-[11px] font-black w-4 text-right text-slate-500">${i + 1}</span>
+            <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-3 p-2.5 rounded-xl transition" style="background: var(--amber-soft);">
+                <span class="text-[10px] font-extrabold tabular-nums w-5 text-right" style="color: var(--muted);">${i + 1}</span>
                 ${lineIcon(d.line_type, d.line_id, 'sm')}
-                <span class="text-xs font-semibold capitalize flex-1">${d.line_type} ${d.line_id}</span>
-                <span class="text-xs font-black tabular-nums ${color}">${pct}%</span>
+                <span class="text-[13px] font-semibold capitalize flex-1">${d.line_type} ${d.line_id}</span>
+                <span class="pill pill-amber">${pct}%</span>
             </a>`;
     });
     document.getElementById('travaux-list').innerHTML = html;
@@ -705,9 +701,13 @@ function renderTravaux() {
 
 // --- Charts ---
 
-const CHART_COLORS = {
-    bar: (v) => v > 15 ? '#f87171' : v > 5 ? '#fbbf24' : '#34d399',
-};
+function barColor(v) {
+    const isDark = document.documentElement.classList.contains('dark');
+    if (v > 15) return isDark ? '#f87171' : '#ef4444';
+    if (v > 5) return isDark ? '#fbbf24' : '#f59e0b';
+    return isDark ? '#34d399' : '#10b981';
+}
+const CHART_COLORS = { bar: barColor };
 
 async function loadByHour() {
     const data = await fetch(`/api/by-hour?${chartQuery('hours')}`).then(r => r.json());
@@ -716,7 +716,7 @@ async function loadByHour() {
         type: 'bar',
         data: {
             labels: data.map(d => `${d.hour}h`),
-            datasets: [{ data: data.map(d => d.pct), backgroundColor: data.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 6, borderSkipped: false }]
+            datasets: [{ data: data.map(d => d.pct), backgroundColor: data.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 8, borderSkipped: false }]
         },
         options: chartOpts()
     });
@@ -733,17 +733,32 @@ async function loadByDow() {
         type: 'bar',
         data: {
             labels: reordered.map(d => DOW_LABELS[d.dow]),
-            datasets: [{ data: reordered.map(d => d.pct), backgroundColor: reordered.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 6, borderSkipped: false }]
+            datasets: [{ data: reordered.map(d => d.pct), backgroundColor: reordered.map(d => CHART_COLORS.bar(d.pct)), borderRadius: 8, borderSkipped: false }]
         },
         options: chartOpts()
     });
 }
 
 function chartOpts() {
+    const isDark = document.documentElement.classList.contains('dark');
     return {
         responsive: true, maintainAspectRatio: true,
-        plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(17,21,35,0.95)', borderColor: 'rgba(129,140,248,0.2)', borderWidth: 1, titleFont: { size: 11 }, bodyFont: { size: 12, weight: 600 }, padding: 10, cornerRadius: 10, callbacks: { label: ctx => `${ctx.parsed.y}%` } } },
-        scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 10 }, color: '#475569' }, grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false } }, x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#475569' } } }
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: isDark ? '#1a1f36' : '#0b0e1a',
+                borderColor: 'rgba(99,102,241,0.30)',
+                borderWidth: 1,
+                titleFont: { family: 'Plus Jakarta Sans', size: 11, weight: 600 },
+                bodyFont: { family: 'JetBrains Mono', size: 12, weight: 700 },
+                padding: 10, cornerRadius: 10, displayColors: false,
+                callbacks: { label: ctx => `${ctx.parsed.y}%` }
+            }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { family: 'JetBrains Mono', size: 10 }, color: isDark ? '#8089a5' : '#6a6e85' }, grid: { color: isDark ? 'rgba(241,243,251,0.05)' : 'rgba(15,18,40,0.05)', drawBorder: false } },
+            x: { grid: { display: false }, ticks: { font: { family: 'Plus Jakarta Sans', size: 11, weight: 600 }, color: isDark ? '#8089a5' : '#6a6e85' } }
+        }
     };
 }
 
@@ -760,7 +775,7 @@ const CAUSE_LABELS = {
     'panne de signalisation': 'Panne signalisation',
     '': 'Non precise',
 };
-const CAUSE_COLORS = ['#f87171','#fbbf24','#60a5fa','#a78bfa','#f472b6','#2dd4bf','#fb923c','#818cf8','#a3e635','#22d3ee'];
+const CAUSE_COLORS = ['#6366f1','#a855f7','#ec4899','#f97316','#f59e0b','#10b981','#06b6d4','#3b82f6','#8b5cf6','#f43f5e'];
 
 async function loadCauses() {
     const allData = await fetch(`/api/causes?${buildQuery()}`).then(r => r.json());
@@ -775,34 +790,45 @@ async function loadCauses() {
     const total = data.reduce((s, d) => s + d.count, 0);
 
     if (chartCauses) chartCauses.destroy();
+    const isDark = document.documentElement.classList.contains('dark');
     chartCauses = new Chart(document.getElementById('chart-causes'), {
         type: 'doughnut',
         data: {
             labels: data.slice(0, 8).map(d => CAUSE_LABELS[d.cause] || d.cause || 'Autre'),
-            datasets: [{ data: data.slice(0, 8).map(d => d.count), backgroundColor: CAUSE_COLORS, borderWidth: 0, hoverOffset: 8 }]
+            datasets: [{ data: data.slice(0, 8).map(d => d.count), backgroundColor: CAUSE_COLORS, borderWidth: 0, hoverOffset: 6 }]
         },
         options: {
             responsive: true, maintainAspectRatio: true,
-            plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(17,21,35,0.95)', borderColor: 'rgba(129,140,248,0.2)', borderWidth: 1, cornerRadius: 10, padding: 10, callbacks: { label: c => ` ${c.label}: ${c.parsed} (${(100*c.parsed/total).toFixed(1)}%)` } } },
-            cutout: '65%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: isDark ? '#1a1f36' : '#0b0e1a',
+                    borderColor: 'rgba(99,102,241,0.30)',
+                    borderWidth: 1, cornerRadius: 10, padding: 10, displayColors: false,
+                    titleFont: { family: 'Plus Jakarta Sans', size: 11, weight: 600 },
+                    bodyFont: { family: 'JetBrains Mono', size: 12, weight: 700 },
+                    callbacks: { label: c => `${c.label}: ${c.parsed} (${(100*c.parsed/total).toFixed(1)}%)` }
+                }
+            },
+            cutout: '70%',
         }
     });
 
     if (totalEl) totalEl.innerHTML = `
-        <span class="text-2xl font-black tabular-nums">${total.toLocaleString('fr')}</span>
-        <span class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">incidents</span>`;
+        <span class="text-3xl font-extrabold tabular-nums tracking-tight" style="color: var(--ink);">${total.toLocaleString('fr')}</span>
+        <span class="text-[10px] uppercase tracking-wider font-bold mt-0.5" style="color: var(--muted);">incidents</span>`;
 
     let html = '';
     data.forEach((d, i) => {
         const pct = total > 0 ? (100 * d.count / total).toFixed(1) : 0;
-        const color = CAUSE_COLORS[i] || '#6B7280';
+        const color = CAUSE_COLORS[i] || '#6b6b6b';
         const label = CAUSE_LABELS[d.cause] || d.cause || 'Autre';
         html += `
-            <div class="flex items-center gap-2 py-0.5">
-                <span class="w-2 h-2 rounded-full shrink-0" style="background:${color}"></span>
-                <span class="text-[11px] font-semibold flex-1 truncate">${label}</span>
-                <span class="text-[11px] font-black tabular-nums text-slate-500">${d.count}</span>
-                <span class="text-[10px] text-slate-400 w-9 text-right tabular-nums">${pct}%</span>
+            <div class="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${color}"></span>
+                <span class="text-[13px] font-semibold flex-1 truncate">${label}</span>
+                <span class="text-[12px] font-bold tabular-nums" style="color: var(--muted);">${d.count}</span>
+                <span class="text-[11px] font-bold tabular-nums w-10 text-right" style="color: var(--ink-soft);">${pct}%</span>
             </div>`;
     });
     document.getElementById('causes-list').innerHTML = html;
