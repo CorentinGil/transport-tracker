@@ -7,7 +7,7 @@ from database import init_db, get_current_status, get_disruption_ranking, \
     get_cause_ranking, get_cause_by_line, get_metro_tram_ranking, get_metro_tram_seasonal, \
     get_metro_tram_history, get_metro_tram_by_year, get_metro_tram_available_years, \
     get_metro_tram_lines, get_monthly_trend, get_sparkline_data, get_recent_alerts, \
-    get_travaux_ranking
+    get_travaux_ranking, get_line_detail_stats, warm_cache
 from scraper import scrape_and_store, test_api_key
 from config import load_config, save_config, get_api_key
 from demo import generate_demo_data
@@ -160,6 +160,11 @@ def api_causes_by_line():
 def api_line_history(line_type, line_id):
     start, end = _get_dates()
     return jsonify(get_line_history(line_type, line_id, start, end))
+
+@app.route("/api/line-stats/<line_type>/<line_id>")
+def api_line_stats(line_type, line_id):
+    start, end = _get_dates()
+    return jsonify(get_line_detail_stats(line_type, line_id, start, end))
 
 @app.route("/api/summary")
 def api_summary():
@@ -385,8 +390,10 @@ def _restart_scheduler():
 # --- Startup ---
 
 if __name__ == "__main__":
+    import threading
     init_db()
     init_sncf_tables()
+    threading.Thread(target=warm_cache, daemon=True).start()
 
     # Sync SNCF data on first run
     try:

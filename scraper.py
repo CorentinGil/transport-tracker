@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from database import get_db
+from database import get_db, invalidate_query_cache
 from config import get_api_key
 
 # Log to file + console
@@ -230,11 +230,12 @@ def scrape_and_store():
 
     conn = get_db()
     conn.executemany(
-        "INSERT INTO line_status (timestamp, line_type, line_id, status, title, message, cause) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO line_status (timestamp, line_type, line_id, status, title, message, cause) VALUES (?, ?, ?, ?, ?, ?, ?)",
         records,
     )
     conn.commit()
     conn.close()
+    invalidate_query_cache()
 
     disrupted = sum(1 for r in records if r[3] == "alerte")
     works = sum(1 for r in records if r[3] == "normal_trav")

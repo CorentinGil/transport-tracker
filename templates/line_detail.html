@@ -43,7 +43,7 @@
 </div>
 
 <!-- Stats -->
-<div id="line-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+<div id="line-stats" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-5"></div>
 
 <!-- Causes + Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -217,33 +217,54 @@ async function loadStatus() {
     document.getElementById('line-current-status').innerHTML = html;
 }
 
+function formatDuration(min) {
+    if (!min || min < 1) return '—';
+    min = Math.round(min);
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h < 24) return m > 0 ? `${h}h ${m.toString().padStart(2,'0')}` : `${h}h`;
+    const d = Math.floor(h / 24);
+    const hr = h % 24;
+    return hr > 0 ? `${d}j ${hr}h` : `${d}j`;
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 async function loadStats() {
-    const ranking = await fetch(`/api/ranking?${buildQuery()}`).then(r => r.json());
-    const d = ranking.find(r => r.line_type === LT && r.line_id === LI) || {};
+    const d = await fetch(`/api/line-stats/${LT}/${LI}?${buildQuery()}`).then(r => r.json());
     const pct = d.disruption_pct || 0;
     const pctColor = pct > 15 ? 'text-red-500' : pct > 5 ? 'text-amber-500' : 'text-emerald-500';
-
-    const period = filterDate ? `le ${filterDate}` : selectedYear !== 'all' ? `en ${selectedYear}` : 'depuis le debut';
+    const period = filterDate ? `le ${formatDate(filterDate)}` : selectedYear !== 'all' ? `en ${selectedYear}` : 'depuis le début';
 
     document.getElementById('line-stats').innerHTML = `
         <div class="card !p-4">
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Collectes</span>
-            <span class="text-2xl font-black mt-1 block">${(d.total_checks||0).toLocaleString('fr')}</span>
-            <span class="text-[10px] text-slate-400">${period}</span>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Incidents distincts</span>
+            <span class="text-2xl font-black mt-1 block text-red-500">${(d.distinct_events||0).toLocaleString('fr')}</span>
+            <span class="text-[10px] text-slate-400" title="Chaque perturbation comptée une seule fois, peu importe sa durée">${period} · hors travaux</span>
         </div>
         <div class="card !p-4">
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Incidents</span>
-            <span class="text-2xl font-black mt-1 block text-red-500">${(d.disrupted_checks||0).toLocaleString('fr')}</span>
-            <span class="text-[10px] text-slate-400">hors travaux</span>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Temps en alerte</span>
+            <span class="text-2xl font-black mt-1 block text-red-500">${formatDuration(d.disrupted_minutes)}</span>
+            <span class="text-[10px] text-slate-400" title="Somme de toutes les minutes passées en alerte">cumulé · ${(d.disrupted_checks||0).toLocaleString('fr')} relevés de 5 min</span>
         </div>
         <div class="card !p-4">
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Temps perturbe</span>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">% du temps perturbé</span>
             <span class="text-2xl font-black mt-1 block ${pctColor}">${pct}%</span>
-            <span class="text-[10px] text-slate-400">du temps surveille</span>
+            <span class="text-[10px] text-slate-400" title="Critère utilisé pour le classement des pires lignes">critère du classement</span>
         </div>
         <div class="card !p-4">
-            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Statut actuel</span>
-            <span class="text-lg font-bold mt-1 block" id="mini-status">--</span>
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Durée moyenne</span>
+            <span class="text-2xl font-black mt-1 block">${formatDuration(d.avg_duration_min)}</span>
+            <span class="text-[10px] text-slate-400">par incident</span>
+        </div>
+        <div class="card !p-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Pire jour</span>
+            <span class="text-base font-bold mt-1 block">${formatDate(d.worst_day)}</span>
+            <span class="text-[10px] text-slate-400">${formatDuration(d.worst_day_minutes)} en alerte</span>
         </div>
     `;
 }

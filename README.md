@@ -82,6 +82,31 @@ Au premier lancement, l'application demande une cle API PRIM. Pour l'obtenir :
 
 Double-cliquer sur `start.bat`.
 
+### Demarrage automatique au boot (Windows)
+
+Le script `scripts\install_autostart.bat` (clic-droit > Executer en tant qu'administrateur) cree une tache planifiee `TransportTracker` qui lance `autostart.bat` au demarrage du PC, en SYSTEM, avec relance automatique en cas de plantage. Tournant en SYSTEM, les processes ne peuvent pas etre tues depuis un terminal utilisateur normal.
+
+### Redemarrer apres une modification du code Python
+
+Les changements HTML/Jinja sont rechargés tout seuls par Flask en mode debug. Les changements dans les fichiers `.py` (database.py, scraper.py, app.py...) demandent un redemarrage du process Python.
+
+**PowerShell en mode administrateur** (Win+X > "Terminal (administrateur)") :
+
+```powershell
+schtasks /end /tn "TransportTracker"; Start-Sleep 1; Get-Process python -EA SilentlyContinue | Stop-Process -Force; Start-Sleep 1; schtasks /run /tn "TransportTracker"
+```
+
+Cette ligne :
+1. Arrete la tache planifiee (tue autostart.bat)
+2. Tue les python.exe survivants (sinon ils continuent a tenir le port 5555)
+3. Relance la tache (autostart.bat repart, lance python avec le nouveau code)
+
+Pour verifier que le port est bien repris par un nouveau process :
+
+```powershell
+Get-NetTCPConnection -LocalPort 5555 -ErrorAction SilentlyContinue | Select-Object OwningProcess
+```
+
 ## Structure du projet
 
 ```

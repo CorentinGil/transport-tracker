@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Transit·IDF — Tableau de bord{% endblock %}
+{% block title %}Paris Transport Tracker — Tableau de bord{% endblock %}
 
 {% block content %}
 <!-- Welcome + year scope -->
@@ -115,7 +115,10 @@
                 <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-rose);">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 17l6-6 4 4 8-8M21 7h-6m6 0v6"/></svg>
                 </span>
-                <h2 class="font-bold text-[16px]">Les pires lignes</h2>
+                <div>
+                    <h2 class="font-bold text-[16px]">Les pires lignes</h2>
+                    <p class="text-[11px]" style="color: var(--muted);">Classées par % du temps en alerte · hors travaux</p>
+                </div>
             </div>
             <div class="flex gap-1 flex-wrap" id="ranking-tabs"></div>
         </div>
@@ -128,7 +131,10 @@
                 <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--grad-emerald);">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7l-6 6-4-4-8 8M3 17h6m-6 0v-6"/></svg>
                 </span>
-                <h2 class="font-bold text-[16px]">Les plus fiables</h2>
+                <div>
+                    <h2 class="font-bold text-[16px]">Les plus fiables</h2>
+                    <p class="text-[11px]" style="color: var(--muted);">Classées par % du temps en alerte · hors travaux</p>
+                </div>
             </div>
             <div class="flex gap-1 flex-wrap" id="best-tabs"></div>
         </div>
@@ -634,6 +640,17 @@ function renderRankingRow(d, i, bestMode) {
     const medalText = i < 3 ? '#fff' : 'var(--muted)';
     const medalStyle = i < 3 ? `background:${medal};color:${medalText};` : `background:var(--bg-soft);color:${medalText};`;
 
+    // Marker pour les coupures structurelles (>7j en continu) : trafic interrompu
+    // pour une raison hors operation quotidienne (pont casse, modernisation longue).
+    let longTermMarker = '';
+    if (d.long_term_since && !bestMode) {
+        const since = new Date(d.long_term_since).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        longTermMarker = `<div class="text-[10px] mt-0.5 flex items-center gap-1" style="color: var(--amber);" title="Cette ligne est en coupure continue depuis cette date — pesant fortement sur le %.">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5 19a2 2 0 01-1.732-3l7-12a2 2 0 013.464 0l7 12A2 2 0 0119 19H5z"/></svg>
+            <span>Interrompue depuis le ${since}</span>
+        </div>`;
+    }
+
     return `
         <a href="/line/${d.line_type}/${d.line_id}" class="flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition">
             <span class="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-extrabold tabular-nums shrink-0" style="${medalStyle}">${i + 1}</span>
@@ -646,6 +663,7 @@ function renderRankingRow(d, i, bestMode) {
                         <span class="text-[14px] font-extrabold tabular-nums w-12 text-right" style="${valueColor}">${pct}%</span>
                     </div>
                 </div>
+                ${longTermMarker}
                 <div class="track mt-1.5">
                     <span style="width:${Math.min(pct, 100)}%; background:${barColor};"></span>
                 </div>
